@@ -1032,21 +1032,81 @@
 	}
 
 	function extractVideoCode(rawName) {
-		const withoutExt = (rawName || '').toString().replace(/\.[^.]+$/, '')
-		const cleaned = withoutExt
-			.toUpperCase()
+		if (!rawName) return ''
+
+		let name = rawName
+			.toString()
+			.replace(/\.[^.]+$/, '')
+			.toUpperCase() // 去后缀，转大写
+
+		// 替换干扰符号为标准连字符 '-'
+		// 将 [xx], 【xx】, (xx) 替换为空格
+		name = name
 			.replace(/\[[^\]]*\]/g, ' ')
 			.replace(/【[^】]*】/g, ' ')
 			.replace(/\([^\)]*\)/g, ' ')
-			.replace(/[^A-Z0-9]+/g, ' ')
-		const matches = cleaned.match(/[A-Z]{2,6}-\d{2,5}(?:-[A-Z])?/g)
-		if (matches && matches.length > 0) return matches[0]
+			.replace(/[@_.]/g, '-') // 关键：把 @, _, . 都变成 -
 
-		const compact = cleaned.replace(/\s+/g, '')
-		const fallback = compact.match(/([A-Z]{2,6})(\d{2,5})([A-Z]?)/)
-		if (!fallback) return ''
-		const suffix = fallback[3] ? `-${fallback[3]}` : ''
-		return `${fallback[1]}-${fallback[2]}${suffix}`
+		// 清洗非核心字符，保留 A-Z, 0-9 和 -
+		name = name.replace(/[^A-Z0-9-]/g, ' ')
+
+		// 合并多余的空格或连字符 (例如 A--B 变成 A-B)
+		name = name.replace(/[\s-]+/g, '-')
+
+		// 处理 FC2 系列 (FC2-PPV-123456 或 FC2-123456)
+		// 逻辑：匹配 FC2 开头，中间可能有 PPV，后面跟着 5-7 位数字
+		const fc2Match = name.match(/(FC2-(?:PPV-)?)(\d{5,7})/)
+		if (fc2Match) {
+			return `${fc2Match[1]}${fc2Match[2]}`
+		}
+		// 黑名单：如果提取出的前缀是这些，说明提取错了
+		const invalidPrefixes = [
+			'FULL',
+			'H264',
+			'HEVC',
+			'MP4',
+			'AVI',
+			'MKV',
+			'WMV',
+			'JPG',
+			'PNG',
+			'COM',
+			'NET',
+			'WWW',
+			'JAV',
+			'HD',
+			'FHD',
+			'1080P',
+			'720P',
+			'4K',
+			'RESTORE',
+			'UNCENSORED',
+			'CHINESE',
+			'ARCHIVE',
+			'XXX',
+		]
+		const regexGeneral = /\b([A-Z]{2,6})-(\d{2,5})(?:-([A-Z]))?\b/g
+
+		let match
+		while ((match = regexGeneral.exec(name)) !== null) {
+			const prefix = match[1]
+			// 检查黑名单
+			if (!invalidPrefixes.includes(prefix)) {
+				const suffix = match[3] ? `-${match[3]}` : ''
+				return `${prefix}-${match[2]}${suffix}`
+			}
+		}
+
+		const compact = name.replace(/-/g, '') // 去掉连字符，只看字符
+		// 稍微放宽正则，允许 fallback
+		const fallbackMatch = compact.match(/([A-Z]{2,6})(\d{2,5})([A-Z])?$/)
+
+		if (fallbackMatch && !invalidPrefixes.includes(fallbackMatch[1])) {
+			const suffix = fallbackMatch[3] ? `-${fallbackMatch[3]}` : ''
+			return `${fallbackMatch[1]}-${fallbackMatch[2]}${suffix}`
+		}
+
+		return '' // 实在提取不到
 	}
 
 	function normalizeCode(value) {
@@ -1109,7 +1169,7 @@
 		document.getElementById('push115-modal-confirm').addEventListener('click', async () => {
 			// 展开面板以便查看任务进度
 			expandPanel()
-			
+
 			const confirmBtn = document.getElementById('push115-modal-confirm')
 			confirmBtn.disabled = true
 			confirmBtn.innerHTML = '<span class="push115-loading"></span>推送中...'
@@ -1414,7 +1474,7 @@
 	function init() {
 		// 防止重复初始化
 		if (document.getElementById('push115-panel')) return
-		
+
 		createConfigPanel()
 		setupCopyListener()
 		console.log('[sehuatang to 115] 插件已加载')
