@@ -16,7 +16,7 @@
 
 ### 一键安装（推荐）
 
-- **[Greasy Fork 安装脚本](https://greasyfork.org/zh-CN/scripts/565030-98tang-sehuatang-%E7%A3%81%E5%8A%9B-ed2k-%E6%8E%A8%E9%80%81%E5%88%B0-115-%E7%BD%91%E7%9B%98)** — 点击即可安装/更新
+- **[Greasy Fork 安装脚本](https://greasyfork.org/zh-CN/scripts/565030-98tangto115)** — 点击即可安装/更新
 
 ### 前置要求
 
