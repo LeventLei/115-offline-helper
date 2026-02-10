@@ -487,12 +487,15 @@
 			// 针对不同端设置 User-Agent 和 Header
 			const customHeaders = {}
 			const userAgents = {
-				'android': 'Mozilla/5.0 (Linux; Android 13; SM-S9080 Build/TP1A.220624.014; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/108.0.5359.128 Mobile Safari/537.36 115Browser/30.4.0',
-				'ios': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 115Browser/30.4.0',
-				'ipad': 'Mozilla/5.0 (iPad; CPU OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 115Browser/30.4.0',
-				'tv': 'Mozilla/5.0 (Linux; Android 10; TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36 115Browser/30.4.0',
-				'wechatmini': 'Mozilla/5.0 (Linux; Android 13; SM-S9080 Build/TP1A.220624.014; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/108.0.5359.128 Mobile Safari/537.36 XWEB/5023 MMWEBSDK/20230202 MMWEBID/8888 MicroMessenger/8.0.33.2320(0x28002151) WeChat/arm64 Weixin NetType/WIFI Language/zh_CN ABI/arm64 MiniProgramEnv/android',
-				'alipaymini': 'Mozilla/5.0 (Linux; Android 13; SM-S9080 Build/TP1A.220624.014; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/111.0.5563.116 Mobile Safari/537.36 Ariver/1.0.0 AliApp(AP/10.3.86.6000) Nebula AlipayDefined(nt:WIFI,ws:360|0|3.0) AliApp(AP/10.3.86.6000) AlipayClient/10.3.86.6000 Language/zh-Hans Region/CN',
+				android:
+					'Mozilla/5.0 (Linux; Android 13; SM-S9080 Build/TP1A.220624.014; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/108.0.5359.128 Mobile Safari/537.36 115Browser/30.4.0',
+				ios: 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 115Browser/30.4.0',
+				ipad: 'Mozilla/5.0 (iPad; CPU OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 115Browser/30.4.0',
+				tv: 'Mozilla/5.0 (Linux; Android 10; TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36 115Browser/30.4.0',
+				wechatmini:
+					'Mozilla/5.0 (Linux; Android 13; SM-S9080 Build/TP1A.220624.014; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/108.0.5359.128 Mobile Safari/537.36 XWEB/5023 MMWEBSDK/20230202 MMWEBID/8888 MicroMessenger/8.0.33.2320(0x28002151) WeChat/arm64 Weixin NetType/WIFI Language/zh_CN ABI/arm64 MiniProgramEnv/android',
+				alipaymini:
+					'Mozilla/5.0 (Linux; Android 13; SM-S9080 Build/TP1A.220624.014; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/111.0.5563.116 Mobile Safari/537.36 Ariver/1.0.0 AliApp(AP/10.3.86.6000) Nebula AlipayDefined(nt:WIFI,ws:360|0|3.0) AliApp(AP/10.3.86.6000) AlipayClient/10.3.86.6000 Language/zh-Hans Region/CN',
 			}
 
 			if (app !== 'web') {
@@ -514,7 +517,7 @@
 				`https://passportapi.115.com/app/1.0/${app}/1.0/login/qrcode/`,
 				'POST',
 				formData,
-				customHeaders
+				customHeaders,
 			)
 
 			if (result.state !== 1 || !result.data || !result.data.cookie) {
@@ -544,19 +547,22 @@
 					cookies.forEach(c => {
 						const [name, value] = c.split('=')
 						if (name && value) {
-							GM_cookie.set({
-								url: 'https://115.com',
-								name: name.trim(),
-								value: value.trim(),
-								domain: '.115.com',
-								path: '/'
-							}, function(error) {
-								if (error) {
-									console.error('GM_cookie set error:', error);
-								} else {
-									console.log('GM_cookie set success:', name);
-								}
-							});
+							GM_cookie.set(
+								{
+									url: 'https://115.com',
+									name: name.trim(),
+									value: value.trim(),
+									domain: '.115.com',
+									path: '/',
+								},
+								function (error) {
+									if (error) {
+										console.error('GM_cookie set error:', error)
+									} else {
+										console.log('GM_cookie set success:', name)
+									}
+								},
+							)
 						}
 					})
 				}
@@ -1385,15 +1391,15 @@
 
 			const confirmBtn = document.getElementById('push115-modal-confirm')
 			confirmBtn.disabled = true
-			confirmBtn.innerHTML = '<span class="push115-loading"></span>推送中...'
+			confirmBtn.innerHTML = '<span class="push115-loading"></span>推送中，请保持页面打开...'
 
 			try {
 				const result = await api.addOfflineTask(linkUrl)
 				overlay.remove()
-				showStatus('success', `✅ 推送成功: ${result.name || '离线任务已添加'}`)
+				showStatus('success', `🎉 推送成功: ${result.name || '离线任务已添加'}`)
 				GM_notification({
 					title: '115 离线下载',
-					text: `推送成功: ${result.name || '任务已添加'}`,
+					text: `🎉 推送成功: ${result.name || '任务已添加'}`,
 					timeout: 3000,
 				})
 
@@ -1525,15 +1531,15 @@
 
 		// 应用描述映射
 		const appDescriptions = {
-			'web': '请使用 115 App 扫码',
-			'ios': '请使用 115 App (iOS端) 扫码',
-			'android': '请使用 115 App (Android端) 扫码',
-			'ipad': '请使用 115 App (iPad端) 扫码',
-			'tv': '请使用 115 App (Android电视端) 扫码',
-			'qios': '请使用 115管理 App (iOS端) 扫码',
-			'qandroid': '请使用 115管理 App (Android端) 扫码',
-			'wechatmini': '请使用 微信 扫码 (115生活小程序)',
-			'alipaymini': '请使用 支付宝 扫码 (115生活小程序)',
+			web: '请使用 115 App 扫码',
+			ios: '请使用 115 App (iOS端) 扫码',
+			android: '请使用 115 App (Android端) 扫码',
+			ipad: '请使用 115 App (iPad端) 扫码',
+			tv: '请使用 115 App (Android电视端) 扫码',
+			qios: '请使用 115管理 App (iOS端) 扫码',
+			qandroid: '请使用 115管理 App (Android端) 扫码',
+			wechatmini: '请使用 微信 扫码 (115生活小程序)',
+			alipaymini: '请使用 支付宝 扫码 (115生活小程序)',
 		}
 
 		// 更新提示文本

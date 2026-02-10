@@ -34,6 +34,12 @@ const I18N_STRINGS = {
     pushing: '推送中...',
     push_success: '✅ 推送成功！',
     push_fail: '❌ 推送失败: ',
+    organizing: '📂 正在整理: ',
+    organize_success: '✅ 整理完成: ',
+    organize_fail: '❌ 整理失败: ',
+    cleaning: '🗑️ 正在清理小文件...',
+    clean_success: '✅ 清理完成: ',
+    clean_fail: '❌ 清理失败: ',
     panel_title: '115离线下载助手',
   },
   'en-US': {
@@ -46,9 +52,356 @@ const I18N_STRINGS = {
     pushing: 'Pushing...',
     push_success: '✅ Push success!',
     push_fail: '❌ Push failed: ',
+    organizing: '📂 Organizing: ',
+    organize_success: '✅ Organized: ',
+    organize_fail: '❌ Organize failed: ',
+    cleaning: '🗑️ Cleaning small files...',
+    clean_success: '✅ Cleaned: ',
+    clean_fail: '❌ Clean failed: ',
     panel_title: '115 Offline Helper',
   },
 };
+
+const VIDEO_EXTENSIONS = [
+  '.mp4', '.mkv', '.avi', '.wmv', '.mov', '.flv', '.rmvb', '.rm', 
+  '.ts', '.m2ts', '.webm', '.m4v', '.3gp', '.mpeg', '.mpg'
+];
+
+function normalizeCode(value) {
+  return (value || '')
+    .toString()
+    .toUpperCase()
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/【[^】]*】/g, '')
+    .replace(/\([^\)]*\)/g, '')
+    .replace(/[^A-Z0-9]+/g, '');
+}
+
+function extractVideoCode(rawName) {
+  if (!rawName) return '';
+  let name = rawName.toString().replace(/\.[^.]+$/, '').toUpperCase();
+
+  name = name
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/【[^】]*】/g, ' ')
+    .replace(/\([^\)]*\)/g, ' ')
+    .replace(/[@_.]/g, '-');
+
+  name = name.replace(/[^A-Z0-9-]/g, ' ');
+  name = name.replace(/[\s-]+/g, '-');
+
+  const fc2Match = name.match(/(FC2-(?:PPV-)?)(\d{5,7})/);
+  if (fc2Match) return `${fc2Match[1]}${fc2Match[2]}`;
+
+  const invalidPrefixes = [
+    'FULL', 'H264', 'HEVC', 'MP4', 'AVI', 'MKV', 'WMV', 'JPG', 'PNG', 
+    'COM', 'NET', 'WWW', 'JAV', 'HD', 'FHD', '1080P', '720P', '4K', 
+    'RESTORE', 'UNCENSORED', 'CHINESE', 'ARCHIVE', 'XXX'
+  ];
+
+  const regexGeneral = /\b([A-Z]{2,6})-(\d{2,5})(?:-([A-Z]))?\b/g;
+  let match;
+  while ((match = regexGeneral.exec(name)) !== null) {
+    const prefix = match[1];
+    if (!invalidPrefixes.includes(prefix)) {
+      const suffix = match[3] ? `-${match[3]}` : '';
+      return `${prefix}-${match[2]}${suffix}`;
+    }
+  }
+
+  const compact = name.replace(/-/g, '');
+  const fallbackMatch = compact.match(/([A-Z]{2,6})(\d{2,5})([A-Z])?$/);
+  if (fallbackMatch && !invalidPrefixes.includes(fallbackMatch[1])) {
+    const suffix = fallbackMatch[3] ? `-${fallbackMatch[3]}` : '';
+    return `${fallbackMatch[1]}-${fallbackMatch[2]}${suffix}`;
+  }
+
+  return '';
+}
+
+// ========== 115 API Wrappers ==========
+
+async function getOfflineTasks() {
+  const res = await sendMessage('API_REQUEST', {
+    url: 'https://115.com/web/lixian/?ct=lixian&ac=task_lists',
+    method: 'GET'
+  });
+  if (res.data?.state) {
+    return res.data.tasks || [];
+  }
+  throw new Error('获取任务列表失败');
+}
+
+async function getFileList(cid = '0') {
+  const res = await sendMessage('API_REQUEST', {
+    url: `https://webapi.115.com/files?aid=1&cid=${cid}&o=user_ptime&asc=0&offset=0&show_dir=1&limit=500&snap=0&natsort=1`,
+    method: 'GET'
+  });
+  return res.data; // Return full response
+}
+
+async function createFolder(parentCid, folderName) {
+  const res = await sendMessage('API_REQUEST', {
+    url: 'https://webapi.115.com/files/add',
+    method: 'POST',
+    data: { pid: parentCid, cname: folderName },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  });
+  return res.data;
+}
+
+async function moveFile(fid, targetCid) {
+  const res = await sendMessage('API_REQUEST', {
+    url: 'https://webapi.115.com/files/move',
+    method: 'POST',
+    data: { pid: targetCid, fid: fid },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  });
+  return res.data;
+}
+
+async function renameFile(fid, newName) {
+  const res = await sendMessage('API_REQUEST', {
+    url: 'https://webapi.115.com/files/edit',
+    method: 'POST',
+    data: { fid, name: newName },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  });
+  return res.data;
+}
+
+async function deleteFiles(fids) {
+  const ids = Array.isArray(fids) ? fids : [fids];
+  const params = new URLSearchParams();
+  ids.forEach((fid, index) => {
+    params.append(`fid[${index}]`, fid);
+  });
+  params.append('ignore_warn', '1');
+
+  const res = await sendMessage('API_REQUEST', {
+    url: 'https://webapi.115.com/rb/delete',
+    method: 'POST',
+    data: params.toString(),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+  });
+  return res.data;
+}
+
+
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function cleanSmallFiles(cid, thresholdMB) {
+  const thresholdBytes = thresholdMB * 1024 * 1024;
+  const allSmallFiles = [];
+
+  const scanFolder = async (folderId, depth = 0) => {
+    if (depth > 3) return;
+    const fileList = await getFileList(folderId);
+    if (!fileList.data || !Array.isArray(fileList.data)) return;
+
+    for (const item of fileList.data) {
+      if (!item.sha) { // Folder
+        const folderCid = item.cid || item.fid;
+        if (folderCid && folderCid !== folderId) {
+          await scanFolder(folderCid, depth + 1);
+        }
+        continue;
+      }
+      
+      const fileSize = item.size || item.s || 0;
+      if (fileSize > 0 && fileSize < thresholdBytes) {
+        allSmallFiles.push({ fid: item.fid, name: item.n || item.name });
+      }
+    }
+  };
+  
+  await scanFolder(cid);
+  
+  if (allSmallFiles.length > 0) {
+    const fileIds = allSmallFiles.map(f => f.fid);
+    // 115 API expects 'fid' to be an array or multiple parameters
+    await deleteFiles(fileIds);
+  }
+  return allSmallFiles.length;
+}
+
+async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'default') {
+  const maxRetries = 120;
+  let retries = 0;
+  let taskName = taskMeta?.name || '';
+  let taskFileCid = '';
+
+  if (modalType === 'toast') {
+    showToast('info', t('pushing'));
+  }
+
+  const resolveTaskFolderCid = async () => {
+    if (taskFileCid) return taskFileCid;
+    if (!taskName) return '';
+
+    const list = await getFileList(savePathCid);
+    if (!list.data || !Array.isArray(list.data)) return '';
+
+    const normalize = v => (v || '').toString().trim().toLowerCase();
+    const taskNameNorm = normalize(taskName);
+    const folders = list.data.filter(item => !item.sha);
+
+    const exact = folders.find(item => normalize(item.n || item.name) === taskNameNorm);
+    if (exact) return exact.cid || exact.fid;
+
+    const fuzzy = folders.find(item => normalize(item.n || item.name).includes(taskNameNorm));
+    if (fuzzy) return fuzzy.cid || fuzzy.fid;
+
+    return '';
+  };
+
+  while (retries < maxRetries) {
+    try {
+      await sleep(10000);
+      const tasks = await getOfflineTasks();
+      const task = tasks.find(t =>
+        (taskMeta?.id && (t.info_hash === taskMeta.id || t.name === taskMeta.id)) ||
+        (taskName && t.name === taskName)
+      );
+
+      if (!task) {
+        retries++;
+        continue;
+      }
+
+      if (!taskName && task.name) taskName = task.name;
+      if (!taskFileCid) {
+        taskFileCid = task.file_id || task.fileId || task.dir_id || task.dirId || task.wppath_id || '';
+      }
+
+      const isCompleted = task.status === 2 || task.percentDone === 100 || task.state === 1;
+      if (!isCompleted) {
+        if (task.status === -1 || task.state === 2) {
+          if (modalType === 'toast') {
+            showToast('error', t('push_fail') + (task.error_msg || 'Unknown error'));
+          }
+          return;
+        }
+        retries++;
+        continue;
+      }
+
+      const targetCid = taskFileCid || await resolveTaskFolderCid();
+      if (!targetCid) {
+        if (modalType === 'toast') {
+          showToast('error', '未找到本次任务目录，已跳过自动处理');
+        }
+        return;
+      }
+
+      const autoDelete = getConfig(CONFIG_KEYS.AUTO_DELETE_SMALL);
+      const autoOrganize = getConfig(CONFIG_KEYS.AUTO_ORGANIZE);
+      const messages = [];
+
+      if (autoDelete) {
+        if (modalType === 'toast') showToast('info', t('cleaning'));
+        const threshold = Number(getConfig(CONFIG_KEYS.DELETE_SIZE_THRESHOLD) || 100);
+        const deletedCount = await cleanSmallFiles(targetCid, threshold);
+        if (deletedCount > 0) {
+          messages.push(`删除 ${deletedCount} 个小文件`);
+        }
+      }
+
+      if (autoOrganize) {
+        if (modalType === 'toast') showToast('info', t('organizing'));
+        const organizedCount = await organizeVideos(targetCid, taskName);
+        if (organizedCount > 0) {
+          messages.push(`整理 ${organizedCount} 个视频`);
+        }
+      }
+
+      if (modalType === 'toast') {
+        if (messages.length > 0) {
+          showToast('success', `✅ ${messages.join('，')}`);
+        } else {
+          showToast('success', '处理完成，没有需要处理的内容');
+        }
+      }
+      return;
+    } catch (err) {
+      console.error('Monitor error:', err);
+      retries++;
+    }
+  }
+}
+
+async function organizeVideos(cid, currentFolderName = '') {
+  const fileList = await getFileList(cid);
+  if (!fileList.data || !Array.isArray(fileList.data)) return;
+
+  const videoFiles = fileList.data.filter(f => {
+    // Must be file (have sha) and match video extension
+    if (!f.sha && !f.fid) return false; // fid check for safety
+    const name = (f.n || f.name || '').toLowerCase();
+    return VIDEO_EXTENSIONS.some(ext => name.endsWith(ext));
+  });
+
+  if (videoFiles.length === 0) return;
+
+  let organizedCount = 0;
+  for (const video of videoFiles) {
+    try {
+      const fileName = video.n || video.name;
+      const extMatch = fileName.match(/\.[^.]+$/);
+      const ext = extMatch ? extMatch[0] : '';
+      const code = extractVideoCode(fileName);
+      const folderName = code || fileName.replace(/\.[^.]+$/, '').toUpperCase();
+      const currentNameNormalized = normalizeCode(currentFolderName);
+      const folderNameNormalized = normalizeCode(folderName);
+      const shouldSkipFolder =
+        currentNameNormalized &&
+        folderNameNormalized &&
+        (currentNameNormalized === folderNameNormalized ||
+          currentNameNormalized.includes(folderNameNormalized) ||
+          folderNameNormalized.includes(currentNameNormalized));
+
+      let canRename = false;
+      let targetCid;
+      if (shouldSkipFolder) {
+        canRename = true;
+      } else {
+        const existingFolder = fileList.data.find(f => !f.sha && (f.n || f.name).toUpperCase() === folderName);
+        if (existingFolder) {
+          targetCid = existingFolder.cid || existingFolder.fid;
+        } else {
+          const createRes = await createFolder(cid, folderName);
+          if (createRes.cid || createRes.file_id) {
+            targetCid = createRes.cid || createRes.file_id;
+          } else {
+            const updatedList = await getFileList(cid);
+            const folder = updatedList.data?.find(f => !f.sha && (f.n || f.name)?.toUpperCase() === folderName);
+            targetCid = folder ? (folder.cid || folder.fid) : '';
+          }
+        }
+        if (targetCid) {
+          const moveResult = await moveFile(video.fid, targetCid);
+          if (moveResult?.state === true) {
+            organizedCount++;
+            canRename = true;
+          }
+        }
+      }
+
+      if (code && canRename) {
+        const newName = `${code}${ext}`;
+        if (newName !== fileName) {
+          await renameFile(video.fid, newName);
+        }
+      }
+
+      await sleep(500);
+    } catch (err) {
+      console.error('Organize error:', err);
+    }
+  }
+  return organizedCount;
+}
 
 let configCache = { ...DEFAULT_CONFIG };
 
@@ -58,8 +411,13 @@ function t(key) {
   return strings[key] || key;
 }
 
+// Helper to safely send message
 function sendMessage(action, details = {}) {
   return new Promise((resolve, reject) => {
+    if (!chrome.runtime || !chrome.runtime.sendMessage) {
+      reject(new Error('Extension context invalidated. Please refresh the page.'));
+      return;
+    }
     chrome.runtime.sendMessage({ action, details }, response => {
       if (chrome.runtime.lastError) {
         reject(chrome.runtime.lastError);
@@ -71,6 +429,8 @@ function sendMessage(action, details = {}) {
     });
   });
 }
+
+
 
 function getConfig(key) {
   return configCache[key];
@@ -217,13 +577,24 @@ function createConfirmModal(url, type) {
       const res = await sendMessage('API_REQUEST', {
         url: 'https://115.com/web/lixian/?ct=lixian&ac=add_task_url',
         method: 'POST',
-        data: { url, uid, sign, time, wp_path_id: savePathCid },
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        data: { url, uid, sign, time, wp_path_id: savePathCid, savepath: '' }
+        // Let fetch handle Content-Type for URLSearchParams
       });
 
       if (res.data && res.data.state) {
         overlay.remove();
         showToast('success', t('push_success'));
+
+        // Start monitoring and organizing if feature is enabled
+        const autoOrganize = getConfig(CONFIG_KEYS.AUTO_ORGANIZE);
+        const autoDelete = getConfig(CONFIG_KEYS.AUTO_DELETE_SMALL);
+        
+        if (autoOrganize || autoDelete) {
+          monitorTaskAndOrganize({
+            id: res.data.info_hash || res.data.name || url,
+            name: res.data.name || ''
+          }, savePathCid, 'toast');
+        }
       } else {
         throw new Error(res.data?.error_msg || 'Unknown error');
       }
@@ -267,6 +638,43 @@ async function init() {
     } else if (href && href.startsWith('ed2k://')) {
       e.preventDefault();
       createConfirmModal(href, 'ED2K');
+    }
+  });
+
+  // Copy event listener - detect magnet/ed2k links in clipboard
+  document.addEventListener('copy', () => {
+    setTimeout(async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        const trimmed = text.trim();
+        if (/^magnet:\?xt=urn:[a-z0-9]+:[a-z0-9]{32,}/i.test(trimmed)) {
+          createConfirmModal(trimmed, 'Magnet');
+        } else if (/^ed2k:\/\/\|file\|/i.test(trimmed)) {
+          createConfirmModal(trimmed, 'ED2K');
+        }
+      } catch (e) {
+        // Clipboard API failed, try selection
+        const selection = window.getSelection();
+        if (selection) {
+          const text = selection.toString().trim();
+          if (/^magnet:\?xt=urn:[a-z0-9]+:[a-z0-9]{32,}/i.test(text)) {
+            createConfirmModal(text, 'Magnet');
+          } else if (/^ed2k:\/\/\|file\|/i.test(text)) {
+            createConfirmModal(text, 'ED2K');
+          }
+        }
+      }
+    }, 100);
+  });
+
+  // Listen for config changes
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local') {
+      for (const key in changes) {
+        if (Object.values(CONFIG_KEYS).includes(key)) {
+          configCache[key] = changes[key].newValue;
+        }
+      }
     }
   });
 }
