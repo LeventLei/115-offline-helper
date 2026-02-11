@@ -319,7 +319,7 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 		}
 
 		if (autoOrganize) {
-			if (modalType === 'toast') showStickyToast('info', '正在整理视频到番号文件夹，请稍候...')
+			if (modalType === 'toast') showStickyToast('info', '正在按文件名整理视频，请稍候...')
 			const organizedCount = await organizeVideos(targetCid, currentFolderName)
 			if (organizedCount > 0) messages.push(`整理 ${organizedCount} 个视频`)
 		}
