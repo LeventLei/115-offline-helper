@@ -1,129 +1,123 @@
-# 磁力/ED2K 一键推送到 115 网盘
+<h1 align="center">
+  <img src="extension/icons/icon128.png" width="64" height="64" alt="logo"><br>
+  115 Offline Helper<br>
+  <sub>115 离线助手</sub>
+</h1>
 
-一个油猴脚本，用于在部分网站（98tang/javdb/bt电影天堂等）上自动检测复制的 magnet/ed2k 链接，一键推送到 115 网盘离线下载。
+<p align="center">
+  <strong>Detect magnet/ed2k links and push them to your 115.com cloud offline download with one click.</strong><br>
+  自动检测 magnet/ed2k 链接，一键推送到 115 网盘离线下载。
+</p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/manifest-v3-blue" alt="Manifest V3">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
+  <img src="https://img.shields.io/badge/version-1.0.0-orange" alt="Version">
+</p>
 
-## 功能特性
+---
 
-- 🔍 **自动检测链接**：监听复制事件，自动识别 magnet 和 ed2k 链接
-- 📥 **一键推送**：弹出确认对话框，一键推送到 115 网盘离线下载
-- 📁 **自定义保存路径**：支持设置离线下载的保存目录
-- ✏️ **自动重命名**：支持离线完成后自动重命名文件
-- 🗑️ **自动清理小文件**：自动删除低于指定大小的文件（如广告文件）
-- 💾 **配置持久化**：所有设置自动保存，下次打开自动恢复
+## ✨ Features / 功能特性
 
-## 安装方法
+- 🔍 **Auto-detect links / 自动检测链接** — Automatically detect magnet and ed2k links on any web page (opt-in)
+- 📋 **Clipboard support / 剪贴板支持** — Paste links directly in the popup to push
+- 📥 **One-click push / 一键推送** — Push links to 115.com offline download queue instantly
+- 📁 **Custom save directory / 自定义保存路径** — Choose which 115 folder to save downloads to
+- 🗑️ **Auto-delete small files / 自动删除小文件** — Automatically remove files under a specified size (e.g., ads)
+- 📂 **Auto-organize videos / 自动整理视频** — Automatically move video files into named folders
+- 📱 **QR code login / 扫码登录** — Log into 115.com directly from the extension popup
+- 🌐 **Bilingual UI / 中英双语** — Interface supports both Chinese and English
 
-### 一键安装（推荐）
+## 📦 Installation / 安装方法
 
-- **[Greasy Fork 安装脚本](https://greasyfork.org/zh-CN/scripts/565030-98tangto115)** — 点击即可安装/更新
+<!-- ### Chrome Web Store（审核通过后补充） -->
 
-### 前置要求
+### Manual Install / 手动安装
 
-1. 安装 Tampermonkey 浏览器扩展
-   - [Chrome 版本](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
-   - [Firefox 版本](https://addons.mozilla.org/en-US/firefox/addon/tampermonkey/)
-   - [Edge 版本](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)
+1. **Download the source code / 下载源码**
 
-2. 确保已登录 115 网盘（在 [115.com](https://115.com) 登录）
+   ```bash
+   git clone https://github.com/gangz1o/115-offline-helper.git
+   ```
 
-### 手动安装脚本
+   Or click the green **Code** button → **Download ZIP**, then unzip.
 
-1. 打开 Tampermonkey 管理面板
-2. 点击「添加新脚本」
-3. 将 `sehuatang-to-115.user.js` 的内容复制粘贴到编辑器中
-4. 点击「保存」
+   或点击绿色 **Code** 按钮 → **Download ZIP**，然后解压。
 
-或者直接点击本仓库中的 `.user.js` 文件，Tampermonkey 会自动提示安装。
+2. **Open Chrome Extensions page / 打开扩展管理页面**
 
-## 使用说明
+   Navigate to `chrome://extensions/` in your browser.
 
-### 配置面板
+   在浏览器地址栏输入 `chrome://extensions/`。
 
-访问 sehuatang.net 网站后，右下角会出现配置面板：
+3. **Enable Developer Mode / 开启开发者模式**
 
-1. **离线保存路径 ID**：输入 115 网盘文件夹的 CID
-   - `0` 表示根目录
-   - 获取 CID 方法：在 115 网盘打开目标文件夹，URL 中 `cid=` 后面的数字就是 CID
-   - 例如：`https://115.com/?cid=1234567` 中的 `1234567`
+   Toggle the **Developer mode** switch in the top-right corner.
 
-2. **离线保存路径名称**：仅用于显示，方便你记住保存位置
+   打开右上角的 **开发者模式** 开关。
 
-3. **离线后自动重命名**：
-   - 启用后可设置重命名模板
-   - `{name}` 会被替换为原文件名
-   - 例如：`[98tang]{name}` 会把文件 `movie.mp4` 重命名为 `[98tang]movie.mp4`
+4. **Load the extension / 加载扩展**
 
-4. **自动删除小文件**：
-   - 启用后可设置大小阈值（单位 MB）
-   - 离线完成后自动删除小于该大小的文件
-   - 适用于清理种子中的广告文件
+   Click **Load unpacked** and select the `extension` folder from the downloaded project.
 
-### 推送链接
+   点击 **加载已解压的扩展程序**，选择项目中的 `extension` 文件夹。
 
-1. 在 sehuatang 页面复制包含 magnet 或 ed2k 链接的文本
-2. 脚本会自动弹出确认对话框
-3. 点击「确定推送」将链接发送到 115 网盘离线下载
-4. 推送成功后会显示通知
+5. **Done! / 完成！**
 
-### 最小化面板
+   The extension icon will appear in your toolbar. Pin it for easy access.
 
-- 点击面板标题栏的「−」按钮可以最小化面板
-- 点击最小化后的图标可以恢复面板
+   扩展图标会出现在工具栏中，建议点击 📌 固定。
 
-### 界面一览
-<img src="https://cdn.nodeimage.com/i/B1IYgLhgviZVBR5VVLAOrnx55n3SZsAm.webp" style="width:300px;height:200px;object-fit:cover;" />
-<img src="https://cdn.nodeimage.com/i/4bEdfGi4myr8iprvMqKGcYrLcyEantgq.webp" style="width:300px;height:200px;object-fit:cover;" />
-<img src="https://cdn.nodeimage.com/i/6x33mGC0tL0NWKqOuul7b2XxLuQk6rmD.webp" style="width:300px;height:200px;object-fit:cover;" />
-<img src="https://cdn.nodeimage.com/i/pv8AJ9w4mFuh2pPQKs2s5LGWY8RI59YO.webp" style="width:300px;height:200px;object-fit:cover;" />
-<img src="https://cdn.nodeimage.com/i/VcMp84uupRq2VWpSi2pMGy1ZAldIXewi.webp" style="width:300px;height:200px;object-fit:cover;" />
+> **💡 Tip:** To update, `git pull` and click the ↻ refresh button on the extension card.
+>
+> **💡 提示：** 更新时 `git pull` 拉取最新代码，然后在扩展页面点击 ↻ 刷新按钮即可。
 
+## 🚀 Usage / 使用说明
 
-## 常见问题
+### Quick Start / 快速开始
 
-### Q: 提示「未登录 115 网盘」？
+1. **Login / 登录** — Click the extension icon, then click **Scan to Login** to log into your 115.com account.
+2. **Set save directory / 设置保存目录** — Choose a target folder from the dropdown on the Home tab, or add custom paths in Settings (format: `FolderName:CID`).
+3. **Push links / 推送链接** — Two ways:
+   - **Popup**: Paste magnet/ed2k links directly into the input box and click **Push**.
+   - **Auto-detect**: Enable "Auto detect links" in Settings, and the extension will detect links on any webpage you visit, showing a confirmation dialog for one-click pushing.
 
-A: 请先访问 [115.com](https://115.com) 登录你的账号，然后刷新 sehuatang 页面重试。
+### Settings / 设置
 
-### Q: 如何获取文件夹 CID？
+| Setting | Description |
+|---------|-------------|
+| Save directory list | Add folders with `Name:CID` format, one per line |
+| Auto-detect links | Enable content script to detect links on all pages |
+| Auto-delete small files | Remove files smaller than specified MB after download |
+| Auto-organize videos | Move video files into folders based on filename |
 
-A: 在 115 网盘网页版打开目标文件夹，查看浏览器地址栏，`cid=` 后面的数字就是 CID。
+## ❓ FAQ / 常见问题
 
-### Q: 自动删除小文件不生效？
+**Q: How to find a folder's CID? / 如何获取文件夹 CID？**
 
-A: 自动删除功能需要等待离线任务完成后才会执行。如果任务下载时间较长，可能需要等待几分钟。
+> Open the folder in [115.com](https://115.com), look at the URL: `https://115.com/?cid=1234567` — the number after `cid=` is the CID.
+>
+> 在 115 网盘网页版打开目标文件夹，地址栏中 `cid=` 后面的数字即 CID。
 
-### Q: 支持哪些链接格式？
+**Q: "Not logged in" error? / 提示未登录？**
 
-A: 支持以下格式：
-- Magnet 链接：`magnet:?xt=urn:btih:...`
-- ED2K 链接：`ed2k://|file|...`
+> Click the extension icon → **Scan to Login**, scan the QR code with the 115 mobile app.
+>
+> 点击扩展图标 → **扫码登录**，用 115 手机客户端扫码。
 
-## 技术说明
+**Q: Auto-detect not working? / 自动检测不生效？**
 
-### 使用的 115 API 端点
+> Make sure "Auto detect links" is enabled in Settings. The browser will ask for additional permissions — click Allow.
+>
+> 确保在设置中开启了"自动检测链接"，浏览器会请求额外权限，请点击允许。
 
-- 登录状态检查：`https://my.115.com/?ct=guide&ac=status`
-- 获取用户 UID：`https://my.115.com/?ct=ajax&ac=get_user_aq`
-- 获取 Sign/Time：`https://115.com/?ct=offline&ac=space`
-- 添加离线任务：`https://115.com/web/lixian/?ct=lixian&ac=add_task_url`
-- 获取任务列表：`https://115.com/web/lixian/?ct=lixian&ac=task_lists`
-- 获取文件列表：`https://webapi.115.com/files`
-- 删除文件：`https://webapi.115.com/rb/delete`
-- 重命名文件：`https://webapi.115.com/files/edit`
+## 🔒 Privacy / 隐私
 
-### 权限说明
+- All data is stored locally in your browser via `chrome.storage.local`
+- No user data is collected, transmitted, or shared with third parties
+- The extension only communicates with `*.115.com` domains for its core functionality
+- [Full Privacy Policy / 完整隐私政策](https://gangz1o.github.io/115-offline-helper/privacy-policy.html)
 
-脚本需要以下 Tampermonkey 权限：
-- `GM_xmlhttpRequest`：用于跨域请求 115 API
-- `GM_setValue/GM_getValue`：用于保存配置
-- `GM_notification`：用于显示系统通知
-- `GM_addStyle`：用于添加自定义样式
+## 📄 License
 
-## 免责声明
-
-本脚本仅供学习交流使用，请遵守相关法律法规和网站使用条款。使用本脚本产生的任何问题由使用者自行承担。
-
-## License
-
-MIT License
+[MIT License](LICENSE)
