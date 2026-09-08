@@ -1,0 +1,10 @@
+{
+  "name": "levent-115-offline-helper",
+  "version": "1.1.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "test:coverage": "node --test --experimental-test-coverage tests/*.test.js",
+    "lint": "node --check extension/background.js && node --check extension/content.js && node --check extension/offline-utils.js && node --check extension/path-utils.js && node --check extension/popup.js && node --check extension/security-utils.js"
+  }
+}
