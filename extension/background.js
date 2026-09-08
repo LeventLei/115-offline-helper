@@ -1,11 +1,13 @@
 // Background Service Worker
 
+importScripts('offline-utils.js', 'security-utils.js')
+
 const STORAGE_KEYS = {
-  COOKIE: 'push115_cookie',
   AUTO_DETECT: 'push115_auto_detect',
 };
 
 const CONTENT_SCRIPT_ID = 'push115-content-script';
+const PAGE_ORIGINS = ['http://*/*', 'https://*/*'];
 
 // ========== Dynamic Content Script Registration ==========
 
@@ -16,7 +18,7 @@ async function registerContentScripts() {
     await chrome.scripting.registerContentScripts([{
       id: CONTENT_SCRIPT_ID,
       matches: ['<all_urls>'],
-      js: ['path-utils.js', 'content.js'],
+      js: ['path-utils.js', 'offline-utils.js', 'content.js'],
       runAt: 'document_idle',
     }]);
     console.log('[BG] Content scripts registered');
@@ -33,7 +35,7 @@ async function injectIntoExistingTabs() {
       try {
         await chrome.scripting.executeScript({
           target: { tabId: tab.id },
-          files: ['path-utils.js', 'content.js'],
+          files: ['path-utils.js', 'offline-utils.js', 'content.js'],
         });
       } catch (e) {
         // Ignore tabs we can't inject into (e.g., chrome:// pages)
@@ -59,7 +61,7 @@ async function syncContentScriptState() {
   const autoDetect = data[STORAGE_KEYS.AUTO_DETECT] === true;
   if (autoDetect) {
     // Verify we still have the permission
-    const hasPermission = await chrome.permissions.contains({ origins: ['<all_urls>'] });
+    const hasPermission = await chrome.permissions.contains({ origins: PAGE_ORIGINS });
     if (hasPermission) {
       await registerContentScripts();
     } else {
@@ -90,66 +92,55 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 // Listen for messages from content script and popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (!sender || sender.id !== chrome.runtime.id) {
+    sendResponse({ success: false, error: '拒绝未知扩展来源' });
+    return false;
+  }
+
   if (request.action === 'API_REQUEST') {
     handleApiRequest(request, sendResponse);
     return true; // Keep the message channel open for async response
-  } else if (request.action === 'GET_COOKIE') {
-    handleGetCookie(request, sendResponse);
-    return true;
-  } else if (request.action === 'SET_COOKIE') {
-    handleSetCookie(request, sendResponse);
-    return true;
-  } else if (request.action === 'NOTIFY') {
-    handleNotify(request);
   } else if (request.action === 'REGISTER_CONTENT_SCRIPTS') {
+    if (!isExtensionPageSender(sender)) {
+      sendResponse({ success: false, error: '仅扩展页面可以修改全站注入设置' });
+      return false;
+    }
     registerContentScripts()
       .then(() => injectIntoExistingTabs())
       .then(() => sendResponse({ success: true }))
       .catch(e => sendResponse({ success: false, error: e.message }));
     return true;
   } else if (request.action === 'UNREGISTER_CONTENT_SCRIPTS') {
-    unregisterContentScripts().then(() => sendResponse({ success: true })).catch(e => sendResponse({ success: false, error: e.message }));
+    if (!isExtensionPageSender(sender)) {
+      sendResponse({ success: false, error: '仅扩展页面可以修改全站注入设置' });
+      return false;
+    }
+    Promise.all([
+      unregisterContentScripts(),
+      chrome.permissions.remove({ origins: PAGE_ORIGINS }),
+    ]).then(() => sendResponse({ success: true })).catch(e => sendResponse({ success: false, error: e.message }));
+    return true;
+  } else if (request.action === 'CLEAN_NAMES') {
+    if (!isExtensionPageSender(sender)) {
+      sendResponse({ success: false, error: '批量重命名只能从扩展弹窗发起' });
+      return false;
+    }
+    cleanNamesRecursively(request.details)
+      .then(result => sendResponse({ success: true, data: result }))
+      .catch(e => sendResponse({ success: false, error: e.message }));
     return true;
   }
 });
 
-function parseCookieString(rawCookie) {
-  if (!rawCookie) return '';
-  if (typeof rawCookie === 'string') return rawCookie.trim();
-  if (typeof rawCookie === 'object') {
-    const parts = [];
-    if (rawCookie.UID) parts.push(`UID=${rawCookie.UID}`);
-    if (rawCookie.CID) parts.push(`CID=${rawCookie.CID}`);
-    if (rawCookie.SEID) parts.push(`SEID=${rawCookie.SEID}`);
-    return parts.join('; ');
-  }
-  return '';
-}
-
-function is115Host(url) {
-  try {
-    const hostname = new URL(url).hostname;
-    return hostname === '115.com' || hostname.endsWith('.115.com');
-  } catch (e) {
-    return false;
-  }
-}
-
-async function getPersistedCookie() {
-  const data = await chrome.storage.local.get(STORAGE_KEYS.COOKIE);
-  return data[STORAGE_KEYS.COOKIE] || '';
-}
-
-async function has115AuthCookies() {
-  const cookies = await chrome.cookies.getAll({ domain: '.115.com' });
-  const names = new Set(cookies.map(c => c.name));
-  return names.has('UID') && names.has('CID') && names.has('SEID');
+function isExtensionPageSender(sender) {
+  const extensionRoot = chrome.runtime.getURL('');
+  return typeof sender?.url === 'string' && sender.url.startsWith(extensionRoot);
 }
 
 async function syncCookieStringToJar(cookieString, options = {}) {
   const { overwrite = true } = options;
-  const expiresAt = Math.floor(Date.now() / 1000) + 180 * 24 * 60 * 60;
-  const pairs = cookieString
+  const safeCookieString = Push115SecurityUtils.parseAuthCookie(cookieString);
+  const pairs = safeCookieString
     .split(';')
     .map(item => item.trim())
     .filter(Boolean);
@@ -178,8 +169,8 @@ async function syncCookieStringToJar(cookieString, options = {}) {
         domain: '.115.com',
         path: '/',
         secure: true,
+        httpOnly: true,
         sameSite: 'no_restriction',
-        expirationDate: expiresAt,
       });
     } catch (e) {
       console.warn('Set cookie failed:', name, e?.message || e);
@@ -187,20 +178,90 @@ async function syncCookieStringToJar(cookieString, options = {}) {
   }
 }
 
-async function restorePersistedCookieIfMissing() {
-  const hasAuth = await has115AuthCookies();
-  if (hasAuth) return false;
-  const saved = await getPersistedCookie();
-  if (!saved) return false;
-  await syncCookieStringToJar(saved, { overwrite: false });
-  return true;
+async function fetch115Json(url, method = 'GET', data = null) {
+  if (!Push115SecurityUtils.isAllowedApiRequest(url, method)) {
+    throw new Error('请求被安全策略拦截');
+  }
+
+  let body
+  const headers = {}
+  if (method === 'POST' && data) {
+    body = new URLSearchParams(data)
+    headers['Content-Type'] = 'application/x-www-form-urlencoded'
+  }
+
+  const response = await fetch(url, { method, body, headers, credentials: 'include' })
+  const result = await response.json()
+  if (!response.ok || !(result?.state === true || result?.state === 1)) {
+    throw new Error(result?.error_msg || result?.error || `115 接口请求失败 (${response.status})`)
+  }
+  return result
 }
 
-async function persistCookieToStorageAndJar(rawCookie) {
-  const cookieString = parseCookieString(rawCookie);
+async function cleanNamesRecursively(details = {}) {
+  const rootCid = String(details.cid || '').trim()
+  const terms = Push115OfflineUtils.normalizeFilterTerms(details.filterTerms).slice(0, 50)
+  if (!/^\d+$/.test(rootCid) || rootCid === '0') throw new Error('请选择非根目录后再批量清理名称')
+  if (terms.length === 0) throw new Error('请先添加至少一个过滤词')
+
+  const queue = [{ cid: rootCid, depth: 0 }]
+  const visited = new Set()
+  let renamed = 0
+  let scanned = 0
+  let skipped = 0
+  const errors = []
+
+  const listDirectoryItems = async cid => {
+    const result = []
+    for (let offset = 0; offset < 5000 && result.length < 5000; offset += 500) {
+      const listUrl = `https://webapi.115.com/files?aid=1&cid=${encodeURIComponent(cid)}&o=user_ptime&asc=0&offset=${offset}&show_dir=1&limit=500&snap=0&natsort=1`
+      const page = await fetch115Json(listUrl)
+      const items = Array.isArray(page.data) ? page.data : []
+      result.push(...items)
+      if (items.length < 500) break
+    }
+    return result
+  }
+
+  while (queue.length && scanned < 5000) {
+    const current = queue.shift()
+    if (visited.has(current.cid) || current.depth > 10) continue
+    visited.add(current.cid)
+
+    const items = await listDirectoryItems(current.cid)
+
+    for (const item of items) {
+      if (scanned >= 5000) break
+      scanned++
+      const id = String(item.fid || item.cid || '').trim()
+      const name = String(item.n || item.name || '')
+      const isFolder = !item.sha
+
+      if (isFolder && id && id !== current.cid) queue.push({ cid: id, depth: current.depth + 1 })
+      if (!id || !name) {
+        skipped++
+        continue
+      }
+
+      const nextName = Push115OfflineUtils.sanitizeName(name, terms)
+      if (nextName === name) continue
+
+      try {
+        await fetch115Json('https://webapi.115.com/files/edit', 'POST', { fid: id, name: nextName })
+        renamed++
+      } catch (error) {
+        errors.push(`${name}: ${error.message}`)
+      }
+    }
+  }
+
+  return { renamed, scanned, skipped, truncated: scanned >= 5000, errors: errors.slice(0, 20) }
+}
+
+async function persistAuthCookieToJar(rawCookie) {
+  const cookieString = Push115SecurityUtils.parseAuthCookie(rawCookie);
   if (!cookieString) return '';
 
-  await chrome.storage.local.set({ [STORAGE_KEYS.COOKIE]: cookieString });
   await syncCookieStringToJar(cookieString);
 
   return cookieString;
@@ -209,17 +270,20 @@ async function persistCookieToStorageAndJar(rawCookie) {
 // Handle generic API requests using fetch
 async function handleApiRequest(request, sendResponse) {
   try {
-    const { url, method = 'GET', data = null, headers = {} } = request.details;
+    const { url, method = 'GET', data = null, headers = {} } = request.details || {};
+    const normalizedMethod = String(method || 'GET').toUpperCase();
+    if (!Push115SecurityUtils.isAllowedApiRequest(url, normalizedMethod)) {
+      throw new Error('请求被安全策略拦截：仅允许预定义的 115 官方接口');
+    }
 
-    const requestHeaders = { ...headers };
-    if (is115Host(url)) {
-      // 只在认证 cookie 缺失时恢复，避免覆盖在线会话导致掉登录
-      await restorePersistedCookieIfMissing();
+    const requestHeaders = {};
+    if (headers['Content-Type'] === 'application/x-www-form-urlencoded') {
+      requestHeaders['Content-Type'] = headers['Content-Type'];
     }
 
     // Convert data to URLSearchParams for POST
     let body = undefined;
-    if (method === 'POST' && data) {
+    if (normalizedMethod === 'POST' && data) {
       if (typeof data === 'string') {
         body = data;
       } else {
@@ -232,7 +296,7 @@ async function handleApiRequest(request, sendResponse) {
     }
 
     const fetchOptions = {
-      method,
+      method: normalizedMethod,
       headers: requestHeaders,
       body,
       credentials: 'include',
@@ -250,20 +314,21 @@ async function handleApiRequest(request, sendResponse) {
     }
 
     // Persist cookie from qrcode login response for long-term usage
+    let responsePayload = responseJson;
     if (
       responseJson &&
       responseJson.state === 1 &&
       responseJson.data &&
       responseJson.data.cookie &&
-      typeof url === 'string' &&
-      url.includes('/login/qrcode/')
+      new URL(url).hostname === 'passportapi.115.com'
     ) {
-      await persistCookieToStorageAndJar(responseJson.data.cookie);
+      await persistAuthCookieToJar(responseJson.data.cookie);
+      responsePayload = Push115SecurityUtils.redactLoginCookie(responseJson);
     }
 
     sendResponse({
       success: true,
-      data: responseJson || responseText,
+      data: responsePayload || responseText,
       status: response.status,
       statusText: response.statusText
     });
@@ -274,43 +339,4 @@ async function handleApiRequest(request, sendResponse) {
       error: error.message
     });
   }
-}
-
-// Get cookies for a specific domain
-async function handleGetCookie(request, sendResponse) {
-  try {
-    const cookies = await chrome.cookies.getAll({ domain: '.115.com' });
-    let cookieString = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-    if (!cookieString) {
-      cookieString = await getPersistedCookie();
-      if (cookieString) {
-        await syncCookieStringToJar(cookieString, { overwrite: false });
-      }
-    }
-    sendResponse({ success: true, cookie: cookieString });
-  } catch (error) {
-    sendResponse({ success: false, error: error.message });
-  }
-}
-
-// Persist cookie explicitly from popup/content
-async function handleSetCookie(request, sendResponse) {
-  try {
-    const cookie = request?.details?.cookie;
-    const persisted = await persistCookieToStorageAndJar(cookie);
-    sendResponse({ success: true, cookie: persisted });
-  } catch (error) {
-    sendResponse({ success: false, error: error.message });
-  }
-}
-
-// Show notifications
-function handleNotify(request) {
-  const { title, message } = request.details;
-  chrome.notifications.create({
-    type: 'basic',
-    iconUrl: 'icons/icon48.png', // Ensure this exists or use a default
-    title: title,
-    message: message
-  });
 }

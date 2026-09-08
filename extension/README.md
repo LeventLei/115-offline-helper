@@ -11,14 +11,17 @@ This directory contains the source code for the Chrome Extension version of the 
 
 ## Development
 
--   **background.js**: Service worker, handles cross-origin requests to 115.com and notifications.
--   **content.js**: Main logic, injects the UI panel into pages.
--   **styles.css**: Styles for the UI panel.
+-   **background.js**: Service worker with a strict 115 API allowlist.
+-   **content.js**: Detects links and shows an isolated confirmation UI.
+-   **offline-utils.js**: Batch link extraction and filename filtering helpers.
+-   **security-utils.js**: API allowlist and authentication-cookie minimization.
 -   **manifest.json**: Extension configuration.
 
 ## Features
 
 -   Automatic detection of Magnet/ED2K links.
+-   Batch paste and deduplication of Magnet/ED2K links.
+-   Recursive, confirmed filename ad filtering for a selected non-root directory.
 -   "Push to 115" functionality.
 -   Settings panel (Theme, Language, Auto-delete/organize).
 -   Background monitoring of offline tasks.

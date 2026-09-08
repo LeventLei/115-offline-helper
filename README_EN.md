@@ -14,7 +14,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/manifest-v3-blue" alt="Manifest V3">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/version-1.0.0-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.0-orange" alt="Version">
 </p>
 
 ---
@@ -42,12 +42,12 @@ Install directly from the Chrome Web Store:
 
 1. **Download the extension**
 
-   Go to the [Releases](https://github.com/gangz1o/115-offline-helper/releases/latest) page and download `115-offline-helper_v*.zip`, then unzip.
+   Go to the [Releases](https://github.com/LeventLei/115-offline-helper/releases/latest) page and download `levent-115-offline-helper_v*.zip`, then unzip.
 
    Or clone the repo:
 
    ```bash
-   git clone https://github.com/gangz1o/115-offline-helper.git
+   git clone https://github.com/LeventLei/115-offline-helper.git
    ```
 
 2. **Open Extensions page**
@@ -106,7 +106,7 @@ Install directly from the Chrome Web Store:
 - All data is stored locally via `chrome.storage.local`
 - No user data is collected, transmitted, or shared with third parties
 - Only communicates with `*.115.com` domains
-- [Full Privacy Policy](https://gangz1o.github.io/115-offline-helper/privacy-policy.html)
+- [Full Privacy Policy](privacy-policy.html)
 
 ## 📄 License
 

@@ -20,7 +20,7 @@ test('从同一行空格分隔文本中批量提取磁力链接', () => {
 
 test('保留磁力参数、支持换行与 ed2k，并按链接去重', () => {
 	const magnet = 'magnet:?xt=urn:btih:b2c9a4bc5c6d03cac4f2fdcef8034632fc286d3e&dn=Mayday%202026'
-	const ed2k = 'ed2k://|file|demo.mkv|123|ABCDEF|/'
+	const ed2k = 'ed2k://|file|demo.mkv|123|0123456789ABCDEF0123456789ABCDEF|/'
 	const input = `${magnet}\n${ed2k}\n${magnet.toUpperCase()}。`
 
 	assert.deepEqual(extractOfflineLinks(input), [magnet, ed2k])
@@ -30,6 +30,11 @@ test('忽略不完整或不受支持的文本', () => {
 	assert.deepEqual(extractOfflineLinks('magnet:?xt=urn:btih:1234 https://example.com'), [])
 })
 
+test('支持 base32 info hash 并清理句末中文标点', () => {
+	const link = 'magnet:?xt=urn:btih:ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'
+	assert.deepEqual(extractOfflineLinks(`${link}。`), [link])
+})
+
 test('过滤词支持 Markdown 链接和反斜杠转义', () => {
 	const terms = normalizeFilterTerms([
 		'【高清剧集网发布 [www.BPHDTV.com](http://www.BPHDTV.com)】',
@@ -37,6 +42,10 @@ test('过滤词支持 Markdown 链接和反斜杠转义', () => {
 	].join('\n'))
 
 	assert.deepEqual(terms, ['【高清剧集网发布 www.BPHDTV.com】', 'www.Example.com'])
+})
+
+test('过滤词数组会忽略空值并按大小写去重', () => {
+	assert.deepEqual(normalizeFilterTerms([' 广告 ', '', '广告', 'AD', 'ad']), ['广告', 'AD'])
 })
 
 test('从文件夹或文件名中删除全部广告词并整理空白', () => {

@@ -381,18 +381,15 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 			}
 
 			const taskFolderCid = await ensureUsableCid(taskFileCid || (await resolveTaskFolderCid()))
-			const targetCid = taskFolderCid || (await ensureUsableCid(savePathCid))
-			if (!targetCid) {
+			if (!taskFolderCid) {
 				if (modalType === 'toast') {
 					hideStickyToast()
-					showToast('error', '未找到可处理目录，请稍后重试', 7000)
+					showToast('error', '无法确认新任务的独立目录，已安全停止自动处理', 7000)
 				}
 				return
 			}
 
-			// 仅当明确定位到“任务文件夹”时，才把任务名作为当前目录名用于 skip 逻辑
-			const organizeFolderName = taskFolderCid ? taskName : ''
-			await processByCid(targetCid, organizeFolderName)
+			await processByCid(taskFolderCid, taskName)
 			return
 		} catch (err) {
 			console.error('Monitor error:', err)
@@ -403,23 +400,9 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 		}
 	}
 
-	// 超时后兜底：直接在保存目录做一次处理
-	try {
-		if (modalType === 'toast') {
-			showStickyToast('warning', '监控超时，正在尝试按保存目录执行一次兜底处理...')
-		}
-		const fallbackCid = await ensureUsableCid(savePathCid)
-		if (fallbackCid) {
-			await processByCid(fallbackCid, '')
-			return
-		}
-	} catch (e) {
-		console.error('[监控] 兜底处理失败:', e)
-	}
-
 	if (modalType === 'toast') {
 		hideStickyToast()
-		showToast('error', '处理超时，建议稍后在 115 网页手动刷新后重试', 8000)
+		showToast('error', '处理超时且无法确认任务目录，已安全停止自动处理', 8000)
 	}
 }
 
@@ -561,14 +544,8 @@ function getSelectedText() {
 	return window.getSelection()?.toString().trim() || ''
 }
 
-function detectOfflineLink(text) {
-	if (/^magnet:\?xt=urn:[a-z0-9]+:[a-z0-9]{32,}/i.test(text)) {
-		return { url: text, type: 'Magnet' }
-	}
-	if (/^ed2k:\/\/\|file\|/i.test(text)) {
-		return { url: text, type: 'ED2K' }
-	}
-	return null
+function hasTrustedUserGesture(event) {
+	return Boolean(event?.isTrusted && (!navigator.userActivation || navigator.userActivation.isActive))
 }
 
 function getRootLabel() {
@@ -581,6 +558,8 @@ function getSavePathOptions() {
 }
 
 // Inject modal styles
+let injectedStylesText = ''
+
 function injectModalStyles() {
 	const style = document.createElement('style')
 	style.textContent = `
@@ -595,9 +574,9 @@ function injectModalStyles() {
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
     }
     @keyframes push115Fade { from { opacity: 0; } to { opacity: 1; } }
-    .push115-modal {
-      background: #fff; border-radius: 16px;
-      width: 400px; max-width: 90vw;
+	    .push115-modal {
+	      background: #fff; border-radius: 16px;
+	      width: 520px; max-width: 92vw;
       box-shadow: 0 20px 60px rgba(0,0,0,0.2);
       animation: push115Slide 0.25s cubic-bezier(0.4,0,0.2,1);
       overflow: hidden;
@@ -618,9 +597,10 @@ function injectModalStyles() {
     .push115-modal-info {
       font-size: 13px; color: #86868b; margin-bottom: 8px;
     }
-    .push115-modal-path-row {
-      display: flex;
-      align-items: center;
+	    .push115-modal-path-row {
+	      display: flex;
+	      align-items: stretch;
+	      flex-direction: column;
       gap: 8px;
       margin-bottom: 8px;
     }
@@ -635,7 +615,7 @@ function injectModalStyles() {
       max-height: 60px; overflow-y: auto; margin-bottom: 12px;
       font-family: 'SF Mono', Monaco, monospace;
     }
-    .push115-modal-select {
+	    .push115-modal-select {
       flex: 1 1 auto;
       min-width: 0;
       padding: 8px 10px;
@@ -645,7 +625,17 @@ function injectModalStyles() {
       color: #1d1d1f;
       background: #fff;
       outline: none;
-    }
+	    }
+	    .push115-modal-selected-path {
+	      margin: -2px 0 8px;
+	      padding: 6px 8px;
+	      border-radius: 6px;
+	      background: rgba(0,122,255,0.06);
+	      color: #3a3a3c;
+	      font-size: 11px;
+	      line-height: 1.45;
+	      overflow-wrap: anywhere;
+	    }
     .push115-modal-select:focus {
       border-color: #007AFF;
       box-shadow: 0 0 0 3px rgba(0,122,255,0.12);
@@ -695,6 +685,7 @@ function injectModalStyles() {
       to { transform: rotate(360deg); }
     }
   `
+	injectedStylesText = style.textContent
 	document.head.appendChild(style)
 }
 
@@ -736,17 +727,26 @@ function hideStickyToast() {
 	}
 }
 
-function createConfirmModal(url, type) {
-	const existing = document.getElementById('push115-modal-overlay')
-	if (existing) existing.remove()
+let activeModalHost = null
+
+function createConfirmModal(rawLinks, type) {
+	const links = Array.isArray(rawLinks) ? rawLinks : [rawLinks]
+	if (links.length === 0) return
+	if (activeModalHost) activeModalHost.remove()
 
 	const currentCid = Push115PathUtils.normalizeCid(getConfig(CONFIG_KEYS.SAVE_PATH_CID)) || '0'
 	const options = getSavePathOptions()
 	const hasCurrent = options.some(item => item.cid === currentCid)
 	const allOptions = hasCurrent ? options : [...options, { name: '', cid: currentCid }]
+	const host = document.createElement('div')
+	host.setAttribute('data-push115-modal-host', '')
+	host.style.cssText = 'all: initial; position: relative; z-index: 2147483647;'
+	const shadow = host.attachShadow({ mode: 'closed' })
+	const shadowStyle = document.createElement('style')
+	shadowStyle.textContent = injectedStylesText
+	shadow.appendChild(shadowStyle)
 	const overlay = document.createElement('div')
 	overlay.className = 'push115-modal-overlay'
-	overlay.id = 'push115-modal-overlay'
 
 	const modal = document.createElement('div')
 	modal.className = 'push115-modal'
@@ -768,14 +768,14 @@ function createConfirmModal(url, type) {
 	info1.className = 'push115-modal-info'
 	info1.textContent = `${t('modal_detect')} `
 	const strong = document.createElement('strong')
-	strong.textContent = type
+	strong.textContent = `${links.length} ${type}`
 	info1.appendChild(strong)
 	info1.appendChild(document.createTextNode(` ${t('modal_link_type')}`))
 	body.appendChild(info1)
 
 	const linkDiv = document.createElement('div')
 	linkDiv.className = 'push115-modal-link'
-	linkDiv.textContent = url
+	linkDiv.textContent = links.join('\n')
 	body.appendChild(linkDiv)
 
 	const pathRow = document.createElement('div')
@@ -790,12 +790,23 @@ function createConfirmModal(url, type) {
 	allOptions.forEach(item => {
 		const opt = document.createElement('option')
 		opt.value = item.cid
-		opt.textContent = Push115PathUtils.formatPathLabel(item, getRootLabel())
+		const label = Push115PathUtils.formatPathLabel(item, getRootLabel())
+		opt.textContent = label
+		opt.title = label
 		if (item.cid === currentCid) opt.selected = true
 		select.appendChild(opt)
 	})
 	pathRow.appendChild(select)
 	body.appendChild(pathRow)
+	const selectedPath = document.createElement('div')
+	selectedPath.className = 'push115-modal-selected-path'
+	const updateSelectedPath = () => {
+		selectedPath.textContent = select.selectedOptions[0]?.textContent || ''
+		select.title = selectedPath.textContent
+	}
+	select.addEventListener('change', updateSelectedPath)
+	updateSelectedPath()
+	body.appendChild(selectedPath)
 
 	const hintDiv = document.createElement('div')
 	hintDiv.className = 'push115-modal-info'
@@ -808,26 +819,37 @@ function createConfirmModal(url, type) {
 	footer.className = 'push115-modal-footer'
 	const cancelBtn = document.createElement('button')
 	cancelBtn.className = 'push115-modal-btn push115-modal-btn-cancel'
-	cancelBtn.id = 'push115-modal-cancel'
 	cancelBtn.textContent = t('modal_cancel')
 	footer.appendChild(cancelBtn)
 	const confirmBtn = document.createElement('button')
 	confirmBtn.className = 'push115-modal-btn push115-modal-btn-confirm'
-	confirmBtn.id = 'push115-modal-confirm'
 	confirmBtn.textContent = t('modal_confirm')
 	footer.appendChild(confirmBtn)
 	modal.appendChild(footer)
 
 	overlay.appendChild(modal)
+	shadow.appendChild(overlay)
+	document.body.appendChild(host)
+	activeModalHost = host
 
-	document.body.appendChild(overlay)
-
-	document.getElementById('push115-modal-cancel').addEventListener('click', () => overlay.remove())
-	overlay.addEventListener('click', e => {
-		if (e.target === overlay) overlay.remove()
+	const closeModal = () => {
+		host.remove()
+		if (activeModalHost === host) activeModalHost = null
+	}
+	cancelBtn.addEventListener('click', e => {
+		if (e.isTrusted) closeModal()
 	})
-	document.getElementById('push115-modal-confirm').addEventListener('click', async () => {
-		const btn = document.getElementById('push115-modal-confirm')
+	overlay.addEventListener('click', e => {
+		if (e.isTrusted && e.target === overlay) closeModal()
+	})
+	confirmBtn.addEventListener('click', async e => {
+		if (!hasTrustedUserGesture(e)) return
+		if (!getConfig(CONFIG_KEYS.AUTO_DETECT)) {
+			closeModal()
+			showToast('error', '自动识别已关闭，本次操作已取消')
+			return
+		}
+		const btn = confirmBtn
 		btn.disabled = true
 		btn.textContent = t('pushing')
 
@@ -847,28 +869,31 @@ function createConfirmModal(url, type) {
 			const sign = tokenRes.data?.sign
 			const time = tokenRes.data?.time
 
-			const savePathCid =
-				Push115PathUtils.normalizeCid(document.getElementById('push115-modal-save-dir')?.value) || currentCid || '0'
+			const savePathCid = Push115PathUtils.normalizeCid(select.value) || currentCid || '0'
 
-			const res = await sendMessage('API_REQUEST', {
-				url: 'https://115.com/web/lixian/?ct=lixian&ac=add_task_url',
-				method: 'POST',
-				data: { url, uid, sign, time, wp_path_id: savePathCid, savepath: '' },
-				// Let fetch handle Content-Type for URLSearchParams
-			})
+			const data = { uid, sign, time, wp_path_id: savePathCid, savepath: '' }
+			let endpoint = 'https://115.com/web/lixian/?ct=lixian&ac=add_task_url'
+			if (links.length === 1) {
+				data.url = links[0]
+			} else {
+				endpoint = 'https://115.com/web/lixian/?ct=lixian&ac=add_task_urls'
+				data.union = '0'
+				links.forEach((link, index) => { data[`url[${index}]`] = link })
+			}
+			const res = await sendMessage('API_REQUEST', { url: endpoint, method: 'POST', data })
 
 			if (res.data && res.data.state) {
-				overlay.remove()
-				showToast('success', t('push_success'))
+				closeModal()
+				showToast('success', links.length > 1 ? ` ${links.length} 个任务推送成功！` : t('push_success'))
 
 				// Start monitoring and organizing if feature is enabled
 				const autoOrganize = getConfig(CONFIG_KEYS.AUTO_ORGANIZE)
 				const autoDelete = getConfig(CONFIG_KEYS.AUTO_DELETE_SMALL)
 
-				if (autoOrganize || autoDelete) {
+				if (links.length === 1 && (autoOrganize || autoDelete)) {
 					monitorTaskAndOrganize(
 						{
-							id: res.data.info_hash || res.data.name || url,
+							id: res.data.info_hash || res.data.name || links[0],
 							name: res.data.name || '',
 						},
 						savePathCid,
@@ -888,7 +913,7 @@ function createConfirmModal(url, type) {
 
 async function init() {
 	// Load config
-	const items = await chrome.storage.local.get(null)
+	const items = await chrome.storage.local.get(Object.values(CONFIG_KEYS))
 	configCache = { ...DEFAULT_CONFIG, ...items }
 
 	// Inject styles for modals
@@ -896,25 +921,26 @@ async function init() {
 
 	// Link click listener
 	document.addEventListener('click', e => {
+		if (!hasTrustedUserGesture(e) || !getConfig(CONFIG_KEYS.AUTO_DETECT)) return
 		const link = e.target.closest('a')
 		if (!link) return
 
 		const href = link.href
 		if (href && href.startsWith('magnet:')) {
 			e.preventDefault()
-			createConfirmModal(href, 'Magnet')
+			createConfirmModal([href], 'Magnet')
 		} else if (href && href.startsWith('ed2k://')) {
 			e.preventDefault()
-			createConfirmModal(href, 'ED2K')
+			createConfirmModal([href], 'ED2K')
 		}
 	})
 
 	// Copy event listener - detect magnet/ed2k links from the current selection
-	document.addEventListener('copy', () => {
-		if (!getConfig(CONFIG_KEYS.AUTO_DETECT)) return
+	document.addEventListener('copy', event => {
+		if (!event.isTrusted || !getConfig(CONFIG_KEYS.AUTO_DETECT)) return
 
-		const link = detectOfflineLink(getSelectedText())
-		if (link) createConfirmModal(link.url, link.type)
+		const links = Push115OfflineUtils.extractOfflineLinks(getSelectedText())
+		if (links.length > 0) createConfirmModal(links, 'Magnet/ED2K')
 	})
 
 	// Listen for config changes

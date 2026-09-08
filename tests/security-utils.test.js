@@ -16,10 +16,20 @@ test('仅允许扩展实际使用的 115 官方接口与方法', () => {
 })
 
 test('拒绝第三方、非 HTTPS、未知 115 接口和错误方法', () => {
+	assert.equal(isAllowedApiRequest('not a url', 'GET'), false)
 	assert.equal(isAllowedApiRequest('https://evil.example/collect', 'POST'), false)
 	assert.equal(isAllowedApiRequest('http://115.com/?ct=offline&ac=space', 'GET'), false)
 	assert.equal(isAllowedApiRequest('https://115.com/unknown', 'GET'), false)
 	assert.equal(isAllowedApiRequest('https://webapi.115.com/rb/delete', 'GET'), false)
+	assert.equal(isAllowedApiRequest('https://passportapi.115.com/app/1.0/unknown/1.0/login/qrcode/', 'POST'), false)
+})
+
+test('允许其余只读官方接口并拒绝错误查询组合', () => {
+	assert.equal(isAllowedApiRequest('https://my.115.com/?ct=guide&ac=status', 'GET'), true)
+	assert.equal(isAllowedApiRequest('https://my.115.com/?ct=guide&ac=nav', 'GET'), false)
+	assert.equal(isAllowedApiRequest('https://webapi.115.com/files?cid=1', 'GET'), true)
+	assert.equal(isAllowedApiRequest('https://qrcodeapi.115.com/api/1.0/web/1.0/token/', 'GET'), true)
+	assert.equal(isAllowedApiRequest('https://qrcodeapi.115.com/unknown', 'GET'), false)
 })
 
 test('只保留 115 登录所需的三个认证 Cookie', () => {
@@ -36,4 +46,6 @@ test('向弹窗返回登录结果前移除 Cookie 明文', () => {
 
 	assert.deepEqual(redacted, { state: 1, data: { user_id: 42, cookie_saved: true } })
 	assert.ok(response.data.cookie)
+	assert.equal(redactLoginCookie(null), null)
+	assert.deepEqual(redactLoginCookie({ state: 0 }), { state: 0 })
 })

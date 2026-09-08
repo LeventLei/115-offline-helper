@@ -9,6 +9,7 @@ const CONFIG_KEYS = {
 	DELETE_SIZE_THRESHOLD: 'push115_delete_size_threshold',
 	AUTO_ORGANIZE: 'push115_auto_organize',
 	AUTO_DETECT: 'push115_auto_detect',
+	NAME_FILTER_LIST: 'push115_name_filter_list',
 	I18N_LOCALE: 'push115_i18n_locale',
 	THEME: 'push115_theme',
 }
@@ -21,6 +22,7 @@ const DEFAULT_CONFIG = {
 	[CONFIG_KEYS.DELETE_SIZE_THRESHOLD]: 100,
 	[CONFIG_KEYS.AUTO_ORGANIZE]: false,
 	[CONFIG_KEYS.AUTO_DETECT]: false,
+	[CONFIG_KEYS.NAME_FILTER_LIST]: '',
 	[CONFIG_KEYS.I18N_LOCALE]: 'zh-CN',
 	[CONFIG_KEYS.THEME]: 'auto',
 }
@@ -33,6 +35,17 @@ const I18N_STRINGS = {
 		save_path_label: '默认保存目录:',
 		cid_hint: '提示: 在“设置”页维护目录列表（每行：目录名:CID）',
 		root_path_name: '根目录',
+		batch_links_label: '批量离线链接',
+		batch_links_placeholder: '粘贴 magnet/ed2k；支持空格、换行混排',
+		batch_links_hint: '将自动识别、去重后批量提交',
+		batch_push: '识别并推送',
+		batch_empty: '没有识别到有效的 magnet/ed2k 链接',
+		batch_success: '已成功提交 {count} 个离线链接',
+		name_filters_label: '文件名广告过滤词（每行一个）',
+		name_filters_placeholder: '例如：【高清剧集网发布 www.BPHDTV.com】',
+		name_filters_hint: '支持直接粘贴 Markdown 链接形式，清理时按字面量匹配',
+		clean_names: '批量清理文件名广告词',
+		clean_names_hint: '处理当前保存目录及子目录；根目录禁止执行',
 		auto_delete_label: '自动删除小文件',
 		delete_size_label_pre: '删除小于',
 		delete_size_label_post: 'MB的文件',
@@ -61,6 +74,17 @@ const I18N_STRINGS = {
 		save_path_label: 'Default Save Directory:',
 		cid_hint: 'Tip: Maintain directory list in Settings, one per line: Name:CID',
 		root_path_name: 'Root',
+		batch_links_label: 'Batch offline links',
+		batch_links_placeholder: 'Paste magnet/ed2k links separated by spaces or new lines',
+		batch_links_hint: 'Links are detected, deduplicated, then submitted in one batch',
+		batch_push: 'Detect and push',
+		batch_empty: 'No valid magnet/ed2k links found',
+		batch_success: 'Submitted {count} offline links',
+		name_filters_label: 'Filename ad filters (one per line)',
+		name_filters_placeholder: 'e.g. 【Release by www.example.com】',
+		name_filters_hint: 'Markdown links are accepted and matched as literal text',
+		clean_names: 'Clean filename ads in batch',
+		clean_names_hint: 'Processes the selected folder and children; root is blocked',
 		auto_delete_label: 'Auto delete small files',
 		delete_size_label_pre: 'Delete files <',
 		delete_size_label_post: 'MB',
@@ -162,6 +186,15 @@ function applyLocale() {
 	document.getElementById('hint-organize').textContent = t('organize_hint')
 	document.getElementById('label-auto-detect').textContent = t('auto_detect_label')
 	document.getElementById('hint-auto-detect').textContent = t('auto_detect_hint')
+	document.getElementById('label-batch-links').textContent = t('batch_links_label')
+	document.getElementById('push115-links-input').placeholder = t('batch_links_placeholder')
+	document.getElementById('hint-batch-links').textContent = t('batch_links_hint')
+	document.getElementById('push115-batch-push').textContent = t('batch_push')
+	document.getElementById('label-name-filters').textContent = t('name_filters_label')
+	document.getElementById('push115-name-filters-input').placeholder = t('name_filters_placeholder')
+	document.getElementById('hint-name-filters').textContent = t('name_filters_hint')
+	document.getElementById('push115-clean-names').textContent = t('clean_names')
+	document.getElementById('hint-clean-names').textContent = t('clean_names_hint')
 	setBtnContent('push115-check-login', 'icons/check.png', t('check_login_text'))
 	setBtnContent('push115-login-btn', 'icons/115.png', t('login_btn'))
 
@@ -186,15 +219,20 @@ function renderSaveDirSelect() {
 	allOptions.forEach(item => {
 		const opt = document.createElement('option')
 		opt.value = item.cid
-		opt.textContent = Push115PathUtils.formatPathLabel(item, getRootLabel())
+		const label = Push115PathUtils.formatPathLabel(item, getRootLabel())
+		opt.textContent = label
+		opt.title = label
 		if (item.cid === savedCid) opt.selected = true
 		selectEl.appendChild(opt)
 	})
+	selectEl.title = selectEl.selectedOptions[0]?.textContent || ''
+	const fullPath = document.getElementById('push115-selected-path')
+	if (fullPath) fullPath.textContent = selectEl.title
 }
 
 async function init() {
 	// Load config
-	const items = await chrome.storage.local.get(null)
+	const items = await chrome.storage.local.get(Object.values(CONFIG_KEYS))
 	configCache = { ...DEFAULT_CONFIG, ...items }
 
 	// Apply theme & locale
@@ -207,6 +245,7 @@ async function init() {
 	document.getElementById('push115-language-select').value = getConfig(CONFIG_KEYS.I18N_LOCALE)
 	document.getElementById('push115-theme-select').value = getConfig(CONFIG_KEYS.THEME)
 	document.getElementById('push115-save-dirs-input').value = getConfig(CONFIG_KEYS.SAVE_PATH_LIST)
+	document.getElementById('push115-name-filters-input').value = getConfig(CONFIG_KEYS.NAME_FILTER_LIST)
 	document.getElementById('push115-auto-detect').checked = getConfig(CONFIG_KEYS.AUTO_DETECT)
 	renderSaveDirSelect()
 
@@ -248,6 +287,13 @@ function bindEvents() {
 		renderSaveDirSelect()
 	})
 
+	document.getElementById('push115-name-filters-input').addEventListener('change', e => {
+		const terms = Push115OfflineUtils.normalizeFilterTerms(e.target.value)
+		const normalized = terms.join('\n')
+		e.target.value = normalized
+		setConfig(CONFIG_KEYS.NAME_FILTER_LIST, normalized)
+	})
+
 	// Auto organize
 	document.getElementById('push115-auto-organize').addEventListener('change', e => {
 		setConfig(CONFIG_KEYS.AUTO_ORGANIZE, e.target.checked)
@@ -257,9 +303,9 @@ function bindEvents() {
 	document.getElementById('push115-auto-detect').addEventListener('change', async e => {
 		const checkbox = e.target
 		if (checkbox.checked) {
-			// Request <all_urls> permission
+			// 仅在用户主动开启时请求 HTTP/HTTPS 页面权限
 			try {
-				const granted = await chrome.permissions.request({ origins: ['<all_urls>'] })
+				const granted = await chrome.permissions.request({ origins: ['http://*/*', 'https://*/*'] })
 				if (granted) {
 					setConfig(CONFIG_KEYS.AUTO_DETECT, true)
 					chrome.runtime.sendMessage({ action: 'REGISTER_CONTENT_SCRIPTS' })
@@ -297,6 +343,9 @@ function bindEvents() {
 		renderSaveDirSelect()
 	})
 
+	document.getElementById('push115-batch-push').addEventListener('click', pushBatchLinks)
+	document.getElementById('push115-clean-names').addEventListener('click', cleanConfiguredNames)
+
 	// Check Login
 	document.getElementById('push115-check-login').addEventListener('click', async () => {
 		const btn = document.getElementById('push115-check-login')
@@ -320,6 +369,88 @@ function bindEvents() {
 	document.getElementById('push115-login-btn').addEventListener('click', () => {
 		showLoginModal()
 	})
+}
+
+async function getOfflineAuthContext() {
+	const userRes = await sendMessage('API_REQUEST', {
+		url: 'https://my.115.com/?ct=ajax&ac=nav',
+		method: 'GET',
+	})
+	const tokenRes = await sendMessage('API_REQUEST', {
+		url: 'https://115.com/?ct=offline&ac=space',
+		method: 'GET',
+	})
+	const uid = userRes.data?.data?.user_id
+	const sign = tokenRes.data?.sign
+	const time = tokenRes.data?.time
+	if (!uid || !sign || !time) throw new Error(t('login_fail'))
+	return { uid, sign, time }
+}
+
+async function pushBatchLinks() {
+	const input = document.getElementById('push115-links-input')
+	const button = document.getElementById('push115-batch-push')
+	const links = Push115OfflineUtils.extractOfflineLinks(input.value)
+	if (links.length === 0) {
+		showStatus('error', t('batch_empty'))
+		return
+	}
+
+	button.disabled = true
+	button.textContent = t('processing')
+	try {
+		const { uid, sign, time } = await getOfflineAuthContext()
+		const cid = Push115PathUtils.normalizeCid(getConfig(CONFIG_KEYS.SAVE_PATH_CID)) || '0'
+		const data = { uid, sign, time, wp_path_id: cid, savepath: '', union: '0' }
+		links.forEach((link, index) => { data[`url[${index}]`] = link })
+
+		const response = await sendMessage('API_REQUEST', {
+			url: 'https://115.com/web/lixian/?ct=lixian&ac=add_task_urls',
+			method: 'POST',
+			data,
+		})
+		if (!(response.data?.state === true || response.data?.state === 1)) {
+			throw new Error(response.data?.error_msg || '115 未接受批量任务')
+		}
+		input.value = links.join('\n')
+		showStatus('success', t('batch_success').replace('{count}', String(links.length)), 5000)
+	} catch (error) {
+		showStatus('error', error.message, 6000)
+	} finally {
+		button.disabled = false
+		button.textContent = t('batch_push')
+	}
+}
+
+async function cleanConfiguredNames() {
+	const cid = Push115PathUtils.normalizeCid(getConfig(CONFIG_KEYS.SAVE_PATH_CID)) || '0'
+	const filterTerms = Push115OfflineUtils.normalizeFilterTerms(getConfig(CONFIG_KEYS.NAME_FILTER_LIST))
+	if (cid === '0') {
+		showStatus('error', '请先选择一个非根目录，避免误处理整个网盘', 6000)
+		return
+	}
+	if (filterTerms.length === 0) {
+		showStatus('error', '请先在“设置”中添加广告过滤词', 5000)
+		return
+	}
+
+	const selectedName = document.getElementById('push115-save-dir-select').selectedOptions[0]?.textContent || `CID:${cid}`
+	if (!confirm(`将递归清理“${selectedName}”中的文件和文件夹名称。\n\n过滤词：\n${filterTerms.join('\n')}\n\n是否继续？`)) return
+
+	const button = document.getElementById('push115-clean-names')
+	button.disabled = true
+	button.textContent = t('processing')
+	try {
+		const response = await sendMessage('CLEAN_NAMES', { cid, filterTerms })
+		const result = response.data || {}
+		const suffix = result.truncated ? '（已达到 5000 项安全上限）' : ''
+		showStatus('success', `已扫描 ${result.scanned || 0} 项，重命名 ${result.renamed || 0} 项${suffix}`, 7000)
+	} catch (error) {
+		showStatus('error', `名称清理失败：${error.message}`, 7000)
+	} finally {
+		button.disabled = false
+		button.textContent = t('clean_names')
+	}
 }
 
 // ========== QR Login Modal ==========
@@ -451,13 +582,9 @@ async function startLoginFlow(selectedApp) {
 						})
 
 						const loginResult = loginResp.data
-						if (!loginResult || loginResult.state !== 1 || !loginResult.data?.cookie) {
+						if (!loginResult || loginResult.state !== 1 || !loginResult.data?.cookie_saved) {
 							throw new Error(loginResult?.error || '登录失败')
 						}
-
-						await sendMessage('SET_COOKIE', {
-							cookie: loginResult.data.cookie,
-						})
 
 						if (statusEl) statusEl.textContent = ' 登录完成'
 						setTimeout(() => {
