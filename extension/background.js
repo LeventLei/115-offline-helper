@@ -1,6 +1,6 @@
 // Background Service Worker
 
-importScripts('offline-utils.js', 'security-utils.js')
+importScripts('security-utils.js')
 
 const STORAGE_KEYS = {
   AUTO_DETECT: 'push115_auto_detect',
@@ -120,15 +120,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       chrome.permissions.remove({ origins: PAGE_ORIGINS }),
     ]).then(() => sendResponse({ success: true })).catch(e => sendResponse({ success: false, error: e.message }));
     return true;
-  } else if (request.action === 'CLEAN_NAMES') {
-    if (!isExtensionPageSender(sender)) {
-      sendResponse({ success: false, error: '批量重命名只能从扩展弹窗发起' });
-      return false;
-    }
-    cleanNamesRecursively(request.details)
-      .then(result => sendResponse({ success: true, data: result }))
-      .catch(e => sendResponse({ success: false, error: e.message }));
-    return true;
   }
 });
 
@@ -176,86 +167,6 @@ async function syncCookieStringToJar(cookieString, options = {}) {
       console.warn('Set cookie failed:', name, e?.message || e);
     }
   }
-}
-
-async function fetch115Json(url, method = 'GET', data = null) {
-  if (!Push115SecurityUtils.isAllowedApiRequest(url, method)) {
-    throw new Error('请求被安全策略拦截');
-  }
-
-  let body
-  const headers = {}
-  if (method === 'POST' && data) {
-    body = new URLSearchParams(data)
-    headers['Content-Type'] = 'application/x-www-form-urlencoded'
-  }
-
-  const response = await fetch(url, { method, body, headers, credentials: 'include' })
-  const result = await response.json()
-  if (!response.ok || !(result?.state === true || result?.state === 1)) {
-    throw new Error(result?.error_msg || result?.error || `115 接口请求失败 (${response.status})`)
-  }
-  return result
-}
-
-async function cleanNamesRecursively(details = {}) {
-  const rootCid = String(details.cid || '').trim()
-  const terms = Push115OfflineUtils.normalizeFilterTerms(details.filterTerms).slice(0, 50)
-  if (!/^\d+$/.test(rootCid) || rootCid === '0') throw new Error('请选择非根目录后再批量清理名称')
-  if (terms.length === 0) throw new Error('请先添加至少一个过滤词')
-
-  const queue = [{ cid: rootCid, depth: 0 }]
-  const visited = new Set()
-  let renamed = 0
-  let scanned = 0
-  let skipped = 0
-  const errors = []
-
-  const listDirectoryItems = async cid => {
-    const result = []
-    for (let offset = 0; offset < 5000 && result.length < 5000; offset += 500) {
-      const listUrl = `https://webapi.115.com/files?aid=1&cid=${encodeURIComponent(cid)}&o=user_ptime&asc=0&offset=${offset}&show_dir=1&limit=500&snap=0&natsort=1`
-      const page = await fetch115Json(listUrl)
-      const items = Array.isArray(page.data) ? page.data : []
-      result.push(...items)
-      if (items.length < 500) break
-    }
-    return result
-  }
-
-  while (queue.length && scanned < 5000) {
-    const current = queue.shift()
-    if (visited.has(current.cid) || current.depth > 10) continue
-    visited.add(current.cid)
-
-    const items = await listDirectoryItems(current.cid)
-
-    for (const item of items) {
-      if (scanned >= 5000) break
-      scanned++
-      const id = String(item.fid || item.cid || '').trim()
-      const name = String(item.n || item.name || '')
-      const isFolder = !item.sha
-
-      if (isFolder && id && id !== current.cid) queue.push({ cid: id, depth: current.depth + 1 })
-      if (!id || !name) {
-        skipped++
-        continue
-      }
-
-      const nextName = Push115OfflineUtils.sanitizeName(name, terms)
-      if (nextName === name) continue
-
-      try {
-        await fetch115Json('https://webapi.115.com/files/edit', 'POST', { fid: id, name: nextName })
-        renamed++
-      } catch (error) {
-        errors.push(`${name}: ${error.message}`)
-      }
-    }
-  }
-
-  return { renamed, scanned, skipped, truncated: scanned >= 5000, errors: errors.slice(0, 20) }
 }
 
 async function persistAuthCookieToJar(rawCookie) {

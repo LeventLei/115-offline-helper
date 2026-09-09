@@ -9,6 +9,7 @@ const CONFIG_KEYS = {
 	DELETE_SIZE_THRESHOLD: 'push115_delete_size_threshold',
 	AUTO_ORGANIZE: 'push115_auto_organize',
 	AUTO_DETECT: 'push115_auto_detect',
+	AUTO_CLEAN_NAMES: 'push115_auto_clean_names',
 	NAME_FILTER_LIST: 'push115_name_filter_list',
 	I18N_LOCALE: 'push115_i18n_locale',
 	THEME: 'push115_theme',
@@ -22,6 +23,7 @@ const DEFAULT_CONFIG = {
 	[CONFIG_KEYS.DELETE_SIZE_THRESHOLD]: 100,
 	[CONFIG_KEYS.AUTO_ORGANIZE]: false,
 	[CONFIG_KEYS.AUTO_DETECT]: false,
+	[CONFIG_KEYS.AUTO_CLEAN_NAMES]: false,
 	[CONFIG_KEYS.NAME_FILTER_LIST]: '',
 	[CONFIG_KEYS.I18N_LOCALE]: 'zh-CN',
 	[CONFIG_KEYS.THEME]: 'auto',
@@ -44,8 +46,8 @@ const I18N_STRINGS = {
 		name_filters_label: '文件名广告过滤词（每行一个）',
 		name_filters_placeholder: '例如：【高清剧集网发布 www.BPHDTV.com】',
 		name_filters_hint: '支持直接粘贴 Markdown 链接形式，清理时按字面量匹配',
-		clean_names: '批量清理文件名广告词',
-		clean_names_hint: '处理当前保存目录及子目录；根目录禁止执行',
+		auto_clean_names_label: '自动清理文件名广告词',
+		auto_clean_names_hint: '推送完成并确认任务目录后自动执行',
 		auto_delete_label: '自动删除小文件',
 		delete_size_label_pre: '删除小于',
 		delete_size_label_post: 'MB的文件',
@@ -83,8 +85,8 @@ const I18N_STRINGS = {
 		name_filters_label: 'Filename ad filters (one per line)',
 		name_filters_placeholder: 'e.g. 【Release by www.example.com】',
 		name_filters_hint: 'Markdown links are accepted and matched as literal text',
-		clean_names: 'Clean filename ads in batch',
-		clean_names_hint: 'Processes the selected folder and children; root is blocked',
+		auto_clean_names_label: 'Automatically clean filename ads',
+		auto_clean_names_hint: 'Runs after a pushed task completes and its folder is confirmed',
 		auto_delete_label: 'Auto delete small files',
 		delete_size_label_pre: 'Delete files <',
 		delete_size_label_post: 'MB',
@@ -193,8 +195,8 @@ function applyLocale() {
 	document.getElementById('label-name-filters').textContent = t('name_filters_label')
 	document.getElementById('push115-name-filters-input').placeholder = t('name_filters_placeholder')
 	document.getElementById('hint-name-filters').textContent = t('name_filters_hint')
-	document.getElementById('push115-clean-names').textContent = t('clean_names')
-	document.getElementById('hint-clean-names').textContent = t('clean_names_hint')
+	document.getElementById('label-auto-clean-names').textContent = t('auto_clean_names_label')
+	document.getElementById('hint-auto-clean-names').textContent = t('auto_clean_names_hint')
 	setBtnContent('push115-check-login', 'icons/check.png', t('check_login_text'))
 	setBtnContent('push115-login-btn', 'icons/115.png', t('login_btn'))
 
@@ -226,8 +228,8 @@ function renderSaveDirSelect() {
 		selectEl.appendChild(opt)
 	})
 	selectEl.title = selectEl.selectedOptions[0]?.textContent || ''
-	const fullPath = document.getElementById('push115-selected-path')
-	if (fullPath) fullPath.textContent = selectEl.title
+	const selectWrapper = selectEl.closest('.push115-path-select-wrapper')
+	if (selectWrapper) selectWrapper.dataset.selectedLabel = selectEl.title
 }
 
 async function init() {
@@ -246,6 +248,7 @@ async function init() {
 	document.getElementById('push115-theme-select').value = getConfig(CONFIG_KEYS.THEME)
 	document.getElementById('push115-save-dirs-input').value = getConfig(CONFIG_KEYS.SAVE_PATH_LIST)
 	document.getElementById('push115-name-filters-input').value = getConfig(CONFIG_KEYS.NAME_FILTER_LIST)
+	document.getElementById('push115-auto-clean-names').checked = getConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES)
 	document.getElementById('push115-auto-detect').checked = getConfig(CONFIG_KEYS.AUTO_DETECT)
 	renderSaveDirSelect()
 
@@ -333,6 +336,10 @@ function bindEvents() {
 		setConfig(CONFIG_KEYS.DELETE_SIZE_THRESHOLD, e.target.value)
 	})
 
+	document.getElementById('push115-auto-clean-names').addEventListener('change', e => {
+		setConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES, e.target.checked)
+	})
+
 	// Save directory
 	document.getElementById('push115-save-dir-select').addEventListener('change', e => {
 		const cid = Push115PathUtils.normalizeCid(e.target.value) || '0'
@@ -344,7 +351,6 @@ function bindEvents() {
 	})
 
 	document.getElementById('push115-batch-push').addEventListener('click', pushBatchLinks)
-	document.getElementById('push115-clean-names').addEventListener('click', cleanConfiguredNames)
 
 	// Check Login
 	document.getElementById('push115-check-login').addEventListener('click', async () => {
@@ -419,37 +425,6 @@ async function pushBatchLinks() {
 	} finally {
 		button.disabled = false
 		button.textContent = t('batch_push')
-	}
-}
-
-async function cleanConfiguredNames() {
-	const cid = Push115PathUtils.normalizeCid(getConfig(CONFIG_KEYS.SAVE_PATH_CID)) || '0'
-	const filterTerms = Push115OfflineUtils.normalizeFilterTerms(getConfig(CONFIG_KEYS.NAME_FILTER_LIST))
-	if (cid === '0') {
-		showStatus('error', '请先选择一个非根目录，避免误处理整个网盘', 6000)
-		return
-	}
-	if (filterTerms.length === 0) {
-		showStatus('error', '请先在“设置”中添加广告过滤词', 5000)
-		return
-	}
-
-	const selectedName = document.getElementById('push115-save-dir-select').selectedOptions[0]?.textContent || `CID:${cid}`
-	if (!confirm(`将递归清理“${selectedName}”中的文件和文件夹名称。\n\n过滤词：\n${filterTerms.join('\n')}\n\n是否继续？`)) return
-
-	const button = document.getElementById('push115-clean-names')
-	button.disabled = true
-	button.textContent = t('processing')
-	try {
-		const response = await sendMessage('CLEAN_NAMES', { cid, filterTerms })
-		const result = response.data || {}
-		const suffix = result.truncated ? '（已达到 5000 项安全上限）' : ''
-		showStatus('success', `已扫描 ${result.scanned || 0} 项，重命名 ${result.renamed || 0} 项${suffix}`, 7000)
-	} catch (error) {
-		showStatus('error', `名称清理失败：${error.message}`, 7000)
-	} finally {
-		button.disabled = false
-		button.textContent = t('clean_names')
 	}
 }
 

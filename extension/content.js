@@ -9,6 +9,8 @@ const CONFIG_KEYS = {
 	DELETE_SIZE_THRESHOLD: 'push115_delete_size_threshold',
 	AUTO_ORGANIZE: 'push115_auto_organize',
 	AUTO_DETECT: 'push115_auto_detect',
+	AUTO_CLEAN_NAMES: 'push115_auto_clean_names',
+	NAME_FILTER_LIST: 'push115_name_filter_list',
 	I18N_LOCALE: 'push115_i18n_locale',
 	THEME: 'push115_theme',
 }
@@ -21,6 +23,8 @@ const DEFAULT_CONFIG = {
 	[CONFIG_KEYS.DELETE_SIZE_THRESHOLD]: 100,
 	[CONFIG_KEYS.AUTO_ORGANIZE]: false,
 	[CONFIG_KEYS.AUTO_DETECT]: false,
+	[CONFIG_KEYS.AUTO_CLEAN_NAMES]: false,
+	[CONFIG_KEYS.NAME_FILTER_LIST]: '',
 	[CONFIG_KEYS.I18N_LOCALE]: 'zh-CN',
 	[CONFIG_KEYS.THEME]: 'auto',
 }
@@ -44,6 +48,8 @@ const I18N_STRINGS = {
 		cleaning: '🗑️ 正在清理小文件...',
 		clean_success: ' 清理完成: ',
 		clean_fail: ' 清理失败: ',
+		cleaning_names: '🧹 正在清理文件名广告词...',
+		clean_names_result: ' 清理了 {count} 个名称',
 		panel_title: '115离线助手',
 	},
 	'en-US': {
@@ -64,6 +70,8 @@ const I18N_STRINGS = {
 		cleaning: '🗑️ Cleaning small files...',
 		clean_success: ' Cleaned: ',
 		clean_fail: ' Clean failed: ',
+		cleaning_names: '🧹 Cleaning filename ads...',
+		clean_names_result: ' Cleaned {count} names',
 		panel_title: '115 Offline Helper',
 	},
 }
@@ -174,9 +182,9 @@ async function getOfflineTasks() {
 	throw new Error('获取任务列表失败')
 }
 
-async function getFileList(cid = '0') {
+async function getFileList(cid = '0', offset = 0, limit = 500) {
 	const res = await sendMessage('API_REQUEST', {
-		url: `https://webapi.115.com/files?aid=1&cid=${cid}&o=user_ptime&asc=0&offset=0&show_dir=1&limit=500&snap=0&natsort=1`,
+		url: `https://webapi.115.com/files?aid=1&cid=${cid}&o=user_ptime&asc=0&offset=${offset}&show_dir=1&limit=${limit}&snap=0&natsort=1`,
 		method: 'GET',
 	})
 	return res.data // Return full response
@@ -267,6 +275,56 @@ async function cleanSmallFiles(cid, thresholdMB) {
 	return allSmallFiles.length
 }
 
+async function cleanNamesRecursively(cid, rawTerms) {
+	const rootCid = Push115PathUtils.normalizeCid(cid)
+	const terms = Push115OfflineUtils.normalizeFilterTerms(rawTerms).slice(0, 50)
+	if (!rootCid || rootCid === '0' || terms.length === 0) return { renamed: 0, scanned: 0, truncated: false }
+
+	const queue = [{ cid: rootCid, depth: 0 }]
+	const visited = new Set()
+	let renamed = 0
+	let scanned = 0
+	let truncated = false
+
+	while (queue.length && scanned < 5000) {
+		const current = queue.shift()
+		if (visited.has(current.cid) || current.depth > 10) continue
+		visited.add(current.cid)
+
+		const items = []
+		for (let offset = 0; offset < 5000 && items.length < 5000; offset += 500) {
+			const page = await getFileList(current.cid, offset, 500)
+			const pageItems = Array.isArray(page?.data) ? page.data : []
+			items.push(...pageItems)
+			if (pageItems.length < 500) break
+		}
+
+		for (const item of items) {
+			if (scanned >= 5000) {
+				truncated = true
+				break
+			}
+			scanned++
+			const id = Push115PathUtils.normalizeCid(item.fid || item.cid)
+			const name = String(item.n || item.name || '')
+			if (!item.sha && id && id !== current.cid) queue.push({ cid: id, depth: current.depth + 1 })
+			if (!id || !name) continue
+
+			const nextName = Push115OfflineUtils.sanitizeName(name, terms)
+			if (nextName === name) continue
+			try {
+				const result = await renameFile(id, nextName)
+				if (result?.state === true || result?.state === 1 || result?.data?.state === true) renamed++
+			} catch (error) {
+				console.warn('[名称清理] 重命名失败:', name, error?.message || error)
+			}
+			await sleep(250)
+		}
+	}
+
+	return { renamed, scanned, truncated }
+}
+
 async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'default') {
 	const maxRetries = 120
 	let retries = 0
@@ -311,14 +369,26 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 	const processByCid = async (targetCid, currentFolderName = '') => {
 		const autoDelete = getConfig(CONFIG_KEYS.AUTO_DELETE_SMALL)
 		const autoOrganize = getConfig(CONFIG_KEYS.AUTO_ORGANIZE)
+		const autoCleanNames = getConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES)
 		const messages = []
 
-		if (autoDelete) {
+			if (autoDelete) {
 			if (modalType === 'toast') showStickyToast('info', '正在删除小文件，请稍候...')
 			const threshold = Number(getConfig(CONFIG_KEYS.DELETE_SIZE_THRESHOLD) || 100)
 			const deletedCount = await cleanSmallFiles(targetCid, threshold)
-			if (deletedCount > 0) messages.push(`删除 ${deletedCount} 个小文件`)
-		}
+				if (deletedCount > 0) messages.push(`删除 ${deletedCount} 个小文件`)
+			}
+
+			if (autoCleanNames) {
+				const filterTerms = Push115OfflineUtils.normalizeFilterTerms(getConfig(CONFIG_KEYS.NAME_FILTER_LIST))
+				if (filterTerms.length > 0) {
+					if (modalType === 'toast') showStickyToast('info', t('cleaning_names'))
+					const cleanResult = await cleanNamesRecursively(targetCid, filterTerms)
+					if (cleanResult.renamed > 0) {
+						messages.push(t('clean_names_result').replace('{count}', String(cleanResult.renamed)))
+					}
+				}
+			}
 
 		if (autoOrganize) {
 			if (modalType === 'toast') showStickyToast('info', '正在按文件名整理视频，请稍候...')
@@ -616,30 +686,34 @@ function injectModalStyles() {
       font-family: 'SF Mono', Monaco, monospace;
     }
 	    .push115-modal-select {
-      flex: 1 1 auto;
-      min-width: 0;
-      padding: 8px 10px;
-      border: 1px solid rgba(0,0,0,0.12);
-      border-radius: 8px;
-      font-size: 13px;
-      color: #1d1d1f;
-      background: #fff;
-      outline: none;
+	      position: absolute;
+	      inset: 0;
+	      width: 100%;
+	      height: 100%;
+	      opacity: 0;
+	      cursor: pointer;
 	    }
-	    .push115-modal-selected-path {
-	      margin: -2px 0 8px;
-	      padding: 6px 8px;
-	      border-radius: 6px;
-	      background: rgba(0,122,255,0.06);
-	      color: #3a3a3c;
-	      font-size: 11px;
-	      line-height: 1.45;
+	    .push115-path-select-wrapper {
+	      position: relative;
+	      min-height: 36px;
+	      border: 1px solid rgba(0,0,0,0.12);
+	      border-radius: 8px;
+	      background: #fff;
+	    }
+	    .push115-path-select-wrapper::before {
+	      content: attr(data-selected-label);
+	      display: block;
+	      min-height: 18px;
+	      padding: 8px 30px 8px 10px;
+	      font-size: 13px;
+	      line-height: 1.35;
+	      color: #1d1d1f;
 	      overflow-wrap: anywhere;
 	    }
-    .push115-modal-select:focus {
-      border-color: #007AFF;
-      box-shadow: 0 0 0 3px rgba(0,122,255,0.12);
-    }
+	    .push115-path-select-wrapper:focus-within {
+	      border-color: #007AFF;
+	      box-shadow: 0 0 0 3px rgba(0,122,255,0.12);
+	    }
     .push115-modal-footer {
       padding: 14px 20px; display: flex; gap: 10px;
       justify-content: flex-end; background: #fafafa;
@@ -796,17 +870,17 @@ function createConfirmModal(rawLinks, type) {
 		if (item.cid === currentCid) opt.selected = true
 		select.appendChild(opt)
 	})
-	pathRow.appendChild(select)
-	body.appendChild(pathRow)
-	const selectedPath = document.createElement('div')
-	selectedPath.className = 'push115-modal-selected-path'
+	const selectWrapper = document.createElement('div')
+	selectWrapper.className = 'push115-path-select-wrapper'
+	selectWrapper.appendChild(select)
+	pathRow.appendChild(selectWrapper)
 	const updateSelectedPath = () => {
-		selectedPath.textContent = select.selectedOptions[0]?.textContent || ''
-		select.title = selectedPath.textContent
+		selectWrapper.dataset.selectedLabel = select.selectedOptions[0]?.textContent || ''
+		select.title = selectWrapper.dataset.selectedLabel
 	}
 	select.addEventListener('change', updateSelectedPath)
 	updateSelectedPath()
-	body.appendChild(selectedPath)
+	body.appendChild(pathRow)
 
 	const hintDiv = document.createElement('div')
 	hintDiv.className = 'push115-modal-info'
@@ -889,8 +963,9 @@ function createConfirmModal(rawLinks, type) {
 				// Start monitoring and organizing if feature is enabled
 				const autoOrganize = getConfig(CONFIG_KEYS.AUTO_ORGANIZE)
 				const autoDelete = getConfig(CONFIG_KEYS.AUTO_DELETE_SMALL)
+				const autoCleanNames = getConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES)
 
-				if (links.length === 1 && (autoOrganize || autoDelete)) {
+				if (links.length === 1 && (autoOrganize || autoDelete || autoCleanNames)) {
 					monitorTaskAndOrganize(
 						{
 							id: res.data.info_hash || res.data.name || links[0],

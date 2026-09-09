@@ -356,17 +356,6 @@ body {
   box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
 }
 
-.push115-selected-path {
-  margin-top: 6px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: rgba(0, 122, 255, 0.06);
-  color: #3a3a3c;
-  font-size: 11px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
-
 .push115-section-action {
   margin-top: 8px;
 }
@@ -387,6 +376,38 @@ body {
   background-size: contain;
   background-repeat: no-repeat;
   pointer-events: none;
+}
+
+.push115-path-select-wrapper {
+  min-height: 36px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.push115-path-select-wrapper::before {
+  content: attr(data-selected-label);
+  display: block;
+  min-height: 18px;
+  padding: 8px 30px 8px 12px;
+  color: #1d1d1f;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.push115-path-select-wrapper > .push115-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.push115-path-select-wrapper:focus-within {
+  border-color: #007AFF;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
 }
 
 /* Textarea */
@@ -448,9 +469,13 @@ body.dark-theme .push115-textarea {
   color: #e0e0e0;
 }
 
-body.dark-theme .push115-selected-path {
-  background: rgba(10, 132, 255, 0.12);
-  color: #d6e9ff;
+body.dark-theme .push115-path-select-wrapper {
+  background: #2a2a2a;
+  border-color: rgba(255,255,255,0.1);
+}
+
+body.dark-theme .push115-path-select-wrapper::before {
+  color: #e0e0e0;
 }
 
 body.dark-theme .push115-input:focus,

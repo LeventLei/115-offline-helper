@@ -21,7 +21,7 @@ This directory contains the source code for the Chrome Extension version of the 
 
 -   Automatic detection of Magnet/ED2K links.
 -   Batch paste and deduplication of Magnet/ED2K links.
--   Recursive, confirmed filename ad filtering for a selected non-root directory.
+-   Optional filename ad filtering during the pushed-task processing flow.
 -   "Push to 115" functionality.
 -   Settings panel (Theme, Language, Auto-delete/organize).
 -   Background monitoring of offline tasks.

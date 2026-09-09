@@ -14,7 +14,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/manifest-v3-blue" alt="Manifest V3">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/version-1.1.0-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.1-orange" alt="Version">
 </p>
 
 ---
@@ -85,7 +85,7 @@
 | 自动删除小文件 | 删除小于指定 MB 的文件 |
 | 自动整理视频文件 | 将视频文件按文件名归类到文件夹 |
 | 文件名广告过滤词 | 每行一个；支持 Markdown 链接写法和反斜杠转义 |
-| 批量清理名称 | 递归清理当前选定目录，禁止从根目录执行，并在操作前二次确认 |
+| 自动清理文件名广告词 | 勾选后随推送流程执行；仅在确认新任务目录后递归清理，禁止从根目录执行 |
 
 ## ❓ 常见问题
 

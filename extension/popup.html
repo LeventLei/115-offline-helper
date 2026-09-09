@@ -62,10 +62,9 @@
 
 					<div class="push115-section">
 						<label class="push115-label" id="label-save-path">默认保存目录:</label>
-						<div class="push115-select-wrapper">
+						<div class="push115-select-wrapper push115-path-select-wrapper">
 							<select id="push115-save-dir-select" class="push115-select"></select>
 						</div>
-						<div class="push115-selected-path" id="push115-selected-path"></div>
 						<div class="push115-hint" id="hint-cid">提示: 在“设置”页维护目录列表（每行：目录名:CID）</div>
 					</div>
 
@@ -81,10 +80,13 @@
 					</div>
 
 					<div class="push115-section">
-						<button class="push115-btn push115-btn-secondary push115-btn-full" id="push115-clean-names">
-							批量清理文件名广告词
-						</button>
-						<div class="push115-hint" id="hint-clean-names">处理当前保存目录及子目录；根目录禁止执行</div>
+						<div class="push115-checkbox-group">
+							<input type="checkbox" class="push115-checkbox" id="push115-auto-clean-names" />
+							<label class="push115-checkbox-label" for="push115-auto-clean-names" id="label-auto-clean-names"
+								>自动清理文件名广告词</label
+							>
+						</div>
+						<div class="push115-hint" id="hint-auto-clean-names">推送完成并确认任务目录后自动执行</div>
 					</div>
 
 					<div class="push115-section" id="push115-delete-section" style="display: none">
