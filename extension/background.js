@@ -293,6 +293,30 @@ async function resolveTaskFolderForMonitor(task, savePathCid) {
   return normalizeMonitorCid(fuzzy?.cid || fuzzy?.fid);
 }
 
+async function renameTaskFolderForMonitor(taskCid, taskName, savePathCid, filterTerms) {
+  const rootCid = normalizeMonitorCid(taskCid);
+  if (!rootCid || filterTerms.length === 0) return { renamed: 0, name: String(taskName || '') };
+
+  let currentName = String(taskName || '').trim();
+  try {
+    const parent = await fetch115Json(`https://webapi.115.com/files?aid=1&cid=${savePathCid}&o=user_ptime&asc=0&offset=0&show_dir=1&limit=500&snap=0&natsort=1`);
+    const match = (Array.isArray(parent.data) ? parent.data : []).find(item =>
+      !item.sha && normalizeMonitorCid(item.cid || item.fid) === rootCid,
+    );
+    if (match) currentName = String(match.n || match.name || currentName).trim();
+  } catch (error) {
+    console.warn('[任务监控] 读取任务根文件夹名称失败:', error?.message || error);
+  }
+
+  if (!currentName || /^(?:magnet:|ed2k:)/i.test(currentName)) return { renamed: 0, name: currentName };
+  const nextName = Push115OfflineUtils.sanitizeName(currentName, filterTerms);
+  if (nextName === currentName) return { renamed: 0, name: currentName };
+
+  const result = await fetch115Json('https://webapi.115.com/files/edit', 'POST', { fid: rootCid, name: nextName });
+  if (result?.state === true || result?.state === 1) return { renamed: 1, name: nextName };
+  return { renamed: 0, name: currentName };
+}
+
 async function cleanNamesForMonitor(rootCid, filterTerms) {
   const queue = [{ cid: rootCid, depth: 0 }];
   const visited = new Set();
@@ -417,7 +441,10 @@ async function handleTaskMonitorAlarm(monitorId) {
       await updateTaskMonitor(monitorId, monitor);
       return;
     }
-    if (monitor.filterTerms.length > 0) await cleanNamesForMonitor(targetCid, monitor.filterTerms);
+    if (monitor.filterTerms.length > 0) {
+      await renameTaskFolderForMonitor(targetCid, task.name, monitor.savePathCid, monitor.filterTerms);
+      await cleanNamesForMonitor(targetCid, monitor.filterTerms);
+    }
     if (monitor.deleteEmptyFolders) await deleteEmptyFoldersForMonitor(targetCid);
     await removeTaskMonitor(monitorId);
   } catch (error) {

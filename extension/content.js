@@ -331,6 +331,41 @@ async function cleanNamesRecursively(cid, rawTerms) {
 	return { renamed, scanned, truncated }
 }
 
+async function cleanTaskFolderName(taskFolderCid, taskName, rawTerms, parentCid = '') {
+	const rootCid = Push115PathUtils.normalizeCid(taskFolderCid)
+	const terms = Push115OfflineUtils.normalizeFilterTerms(rawTerms).slice(0, 50)
+	if (!rootCid || rootCid === '0' || terms.length === 0) return { name: String(taskName || ''), renamed: 0 }
+
+	let currentName = String(taskName || '').trim()
+	if (parentCid) {
+		try {
+			const parent = await getFileList(parentCid, 0, 500)
+			const match = parent?.data?.find(item => {
+				if (item.sha) return false
+				const itemCid = Push115PathUtils.normalizeCid(item.cid || item.fid)
+				return itemCid === rootCid
+			})
+			if (match) currentName = String(match.n || match.name || currentName).trim()
+		} catch (error) {
+			console.warn('[名称清理] 读取任务根目录名称失败:', error?.message || error)
+		}
+	}
+
+	if (!currentName || /^(?:magnet:|ed2k:)/i.test(currentName)) return { name: currentName, renamed: 0 }
+	const nextName = Push115OfflineUtils.sanitizeName(currentName, terms)
+	if (nextName === currentName) return { name: currentName, renamed: 0 }
+
+	try {
+		const result = await renameFile(rootCid, nextName)
+		if (result?.state === true || result?.state === 1 || result?.data?.state === true) {
+			return { name: nextName, renamed: 1 }
+		}
+	} catch (error) {
+		console.warn('[名称清理] 任务根文件夹重命名失败:', currentName, error?.message || error)
+	}
+	return { name: currentName, renamed: 0 }
+}
+
 async function deleteEmptyFoldersRecursively(cid) {
 	const rootCid = Push115PathUtils.normalizeCid(cid)
 	if (!rootCid || rootCid === '0') return { deleted: 0, scanned: 0, truncated: false }
@@ -430,7 +465,7 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 		return ''
 	}
 
-	const processByCid = async (targetCid, currentFolderName = '') => {
+	const processByCid = async (targetCid, currentFolderName = '', rootRenamedCount = 0) => {
 		const autoDelete = getConfig(CONFIG_KEYS.AUTO_DELETE_SMALL)
 		const autoOrganize = getConfig(CONFIG_KEYS.AUTO_ORGANIZE)
 		const autoCleanNames = getConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES)
@@ -449,9 +484,12 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 				if (filterTerms.length > 0) {
 					if (modalType === 'toast') showStickyToast('info', t('cleaning_names'))
 					const cleanResult = await cleanNamesRecursively(targetCid, filterTerms)
-					if (cleanResult.renamed > 0) {
-						messages.push(t('clean_names_result').replace('{count}', String(cleanResult.renamed)))
+					const totalRenamed = cleanResult.renamed + rootRenamedCount
+					if (totalRenamed > 0) {
+						messages.push(t('clean_names_result').replace('{count}', String(totalRenamed)))
 					}
+				} else if (rootRenamedCount > 0) {
+					messages.push(t('clean_names_result').replace('{count}', String(rootRenamedCount)))
 				}
 			}
 
@@ -532,7 +570,15 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 				return
 			}
 
-			await processByCid(taskFolderCid, taskName)
+			let effectiveTaskName = taskName
+			let rootRenamedCount = 0
+			if (getConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES)) {
+				const filterTerms = Push115OfflineUtils.normalizeFilterTerms(getConfig(CONFIG_KEYS.NAME_FILTER_LIST))
+				const rootResult = await cleanTaskFolderName(taskFolderCid, taskName, filterTerms, savePathCid)
+				effectiveTaskName = rootResult.name || taskName
+				rootRenamedCount = rootResult.renamed
+			}
+			await processByCid(taskFolderCid, effectiveTaskName, rootRenamedCount)
 			return
 		} catch (err) {
 			console.error('Monitor error:', err)

@@ -14,7 +14,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/manifest-v3-blue" alt="Manifest V3">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/version-1.1.2-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.3-orange" alt="Version">
 </p>
 
 ---
@@ -84,7 +84,7 @@
 | 自动检测链接 | 通过内容脚本在所有页面检测链接 |
 | 自动删除小文件 | 删除小于指定 MB 的文件 |
 | 自动整理视频文件 | 将视频文件按文件名归类到文件夹 |
-| 文件名广告过滤词 | 每行一个；支持 Markdown 链接写法和反斜杠转义 |
+| 文件名广告过滤词 | 每行一个；支持 Markdown 链接写法和反斜杠转义，包含任务最顶层文件夹名 |
 | 自动清理文件名广告词 | 勾选后随推送流程执行；仅在确认新任务目录后递归清理，禁止从根目录执行 |
 | 自动删除空文件夹 | 勾选后在小文件删除、广告词清理和视频整理完成后，删除任务目录内的空子文件夹 |
 
