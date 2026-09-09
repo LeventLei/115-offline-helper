@@ -1,6 +1,6 @@
 // Background Service Worker
 
-importScripts('security-utils.js')
+importScripts('offline-utils.js', 'security-utils.js')
 
 const STORAGE_KEYS = {
   AUTO_DETECT: 'push115_auto_detect',
@@ -8,6 +8,9 @@ const STORAGE_KEYS = {
 
 const CONTENT_SCRIPT_ID = 'push115-content-script';
 const PAGE_ORIGINS = ['http://*/*', 'https://*/*'];
+const TASK_MONITOR_STORAGE_KEY = 'push115_task_monitors';
+const TASK_MONITOR_ALARM_PREFIX = 'push115-task-monitor:';
+const TASK_MONITOR_MAX_ATTEMPTS = 40;
 
 // ========== Dynamic Content Script Registration ==========
 
@@ -90,6 +93,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm?.name?.startsWith(TASK_MONITOR_ALARM_PREFIX)) {
+    handleTaskMonitorAlarm(alarm.name);
+  }
+});
+
 // Listen for messages from content script and popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (!sender || sender.id !== chrome.runtime.id) {
@@ -119,6 +128,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       unregisterContentScripts(),
       chrome.permissions.remove({ origins: PAGE_ORIGINS }),
     ]).then(() => sendResponse({ success: true })).catch(e => sendResponse({ success: false, error: e.message }));
+    return true;
+  } else if (request.action === 'START_TASK_MONITOR') {
+    if (!isExtensionPageSender(sender)) {
+      sendResponse({ success: false, error: '仅扩展弹窗可以启动任务处理监控' });
+      return false;
+    }
+    startTaskMonitor(request.details)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(e => sendResponse({ success: false, error: e.message }));
     return true;
   }
 });
@@ -176,6 +194,186 @@ async function persistAuthCookieToJar(rawCookie) {
   await syncCookieStringToJar(cookieString);
 
   return cookieString;
+}
+
+async function fetch115Json(url, method = 'GET', data = null) {
+  const normalizedMethod = String(method || 'GET').toUpperCase();
+  if (!Push115SecurityUtils.isAllowedApiRequest(url, normalizedMethod)) {
+    throw new Error('请求被安全策略拦截');
+  }
+
+  const options = { method: normalizedMethod, credentials: 'include' };
+  if (normalizedMethod === 'POST' && data) {
+    options.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
+    options.body = new URLSearchParams(data);
+  }
+
+  const response = await fetch(url, options);
+  const text = await response.text();
+  let result;
+  try {
+    result = JSON.parse(text);
+  } catch (_) {
+    throw new Error('115 接口返回了无法解析的响应');
+  }
+  if (!response.ok || !(result?.state === true || result?.state === 1)) {
+    throw new Error(result?.error_msg || result?.error || `115 接口请求失败 (${response.status})`);
+  }
+  return result;
+}
+
+function normalizeMonitorCid(value) {
+  const cid = String(value ?? '').trim();
+  return /^\d+$/.test(cid) && cid !== '0' ? cid : '';
+}
+
+async function startTaskMonitor(details = {}) {
+  const savePathCid = normalizeMonitorCid(details.savePathCid);
+  const filterTerms = Push115OfflineUtils.normalizeFilterTerms(details.filterTerms).slice(0, 50);
+  const taskMeta = details.taskMeta && typeof details.taskMeta === 'object' ? {
+    id: String(details.taskMeta.id || '').slice(0, 200),
+    name: String(details.taskMeta.name || '').slice(0, 200),
+  } : null;
+
+  if (!savePathCid || !taskMeta || (!taskMeta.id && !taskMeta.name) || filterTerms.length === 0) {
+    throw new Error('任务监控参数不完整，已跳过自动清理');
+  }
+
+  const monitorId = `${TASK_MONITOR_ALARM_PREFIX}${crypto.randomUUID()}`;
+  const stored = await chrome.storage.session.get(TASK_MONITOR_STORAGE_KEY);
+  const monitors = stored[TASK_MONITOR_STORAGE_KEY] || {};
+  monitors[monitorId] = {
+    taskMeta,
+    savePathCid,
+    filterTerms,
+    attempts: 0,
+    running: false,
+  };
+  await chrome.storage.session.set({ [TASK_MONITOR_STORAGE_KEY]: monitors });
+  await chrome.alarms.create(monitorId, { periodInMinutes: 0.5 });
+  return { monitorId };
+}
+
+async function removeTaskMonitor(monitorId) {
+  const stored = await chrome.storage.session.get(TASK_MONITOR_STORAGE_KEY);
+  const monitors = stored[TASK_MONITOR_STORAGE_KEY] || {};
+  delete monitors[monitorId];
+  await chrome.storage.session.set({ [TASK_MONITOR_STORAGE_KEY]: monitors });
+  await chrome.alarms.clear(monitorId);
+}
+
+async function getTaskMonitor(monitorId) {
+  const stored = await chrome.storage.session.get(TASK_MONITOR_STORAGE_KEY);
+  return stored[TASK_MONITOR_STORAGE_KEY]?.[monitorId] || null;
+}
+
+async function updateTaskMonitor(monitorId, monitor) {
+  const stored = await chrome.storage.session.get(TASK_MONITOR_STORAGE_KEY);
+  const monitors = stored[TASK_MONITOR_STORAGE_KEY] || {};
+  if (monitors[monitorId]) monitors[monitorId] = monitor;
+  await chrome.storage.session.set({ [TASK_MONITOR_STORAGE_KEY]: monitors });
+}
+
+async function resolveTaskFolderForMonitor(task, savePathCid) {
+  const directCid = normalizeMonitorCid(task?.file_id || task?.fileId || task?.dir_id || task?.dirId || task?.wppath_id);
+  if (directCid) {
+    const direct = await fetch115Json(`https://webapi.115.com/files?aid=1&cid=${directCid}&o=user_ptime&asc=0&offset=0&show_dir=1&limit=1&snap=0&natsort=1`);
+    if (Array.isArray(direct.data)) return directCid;
+  }
+
+  const taskName = String(task?.name || '').trim().toLocaleLowerCase();
+  if (!taskName) return '';
+  const parent = await fetch115Json(`https://webapi.115.com/files?aid=1&cid=${savePathCid}&o=user_ptime&asc=0&offset=0&show_dir=1&limit=500&snap=0&natsort=1`);
+  const folders = Array.isArray(parent.data) ? parent.data.filter(item => !item.sha) : [];
+  const normalizeName = item => String(item?.n || item?.name || '').trim().toLocaleLowerCase();
+  const exact = folders.find(item => normalizeName(item) === taskName);
+  const fuzzy = exact || folders.find(item => normalizeName(item).includes(taskName));
+  return normalizeMonitorCid(fuzzy?.cid || fuzzy?.fid);
+}
+
+async function cleanNamesForMonitor(rootCid, filterTerms) {
+  const queue = [{ cid: rootCid, depth: 0 }];
+  const visited = new Set();
+  let scanned = 0;
+  let renamed = 0;
+
+  while (queue.length && scanned < 5000) {
+    const current = queue.shift();
+    if (visited.has(current.cid) || current.depth > 10) continue;
+    visited.add(current.cid);
+
+    const items = [];
+    for (let offset = 0; offset < 5000 && items.length < 5000; offset += 500) {
+      const page = await fetch115Json(`https://webapi.115.com/files?aid=1&cid=${current.cid}&o=user_ptime&asc=0&offset=${offset}&show_dir=1&limit=500&snap=0&natsort=1`);
+      const pageItems = Array.isArray(page.data) ? page.data : [];
+      items.push(...pageItems);
+      if (pageItems.length < 500) break;
+    }
+
+    for (const item of items) {
+      if (scanned >= 5000) break;
+      scanned++;
+      const id = normalizeMonitorCid(item.fid || item.cid);
+      const name = String(item.n || item.name || '');
+      if (!item.sha && id && id !== current.cid) queue.push({ cid: id, depth: current.depth + 1 });
+      if (!id || !name) continue;
+      const nextName = Push115OfflineUtils.sanitizeName(name, filterTerms);
+      if (nextName === name) continue;
+      const result = await fetch115Json('https://webapi.115.com/files/edit', 'POST', { fid: id, name: nextName });
+      if (result?.state === true || result?.state === 1) renamed++;
+    }
+  }
+
+  return { scanned, renamed, truncated: scanned >= 5000 };
+}
+
+async function handleTaskMonitorAlarm(monitorId) {
+  const monitor = await getTaskMonitor(monitorId);
+  if (!monitor || monitor.running) return;
+  if (monitor.attempts >= TASK_MONITOR_MAX_ATTEMPTS) {
+    await removeTaskMonitor(monitorId);
+    return;
+  }
+
+  monitor.running = true;
+  monitor.attempts += 1;
+  await updateTaskMonitor(monitorId, monitor);
+  try {
+    const list = await fetch115Json('https://115.com/web/lixian/?ct=lixian&ac=task_lists');
+    const tasks = Array.isArray(list.tasks) ? list.tasks : [];
+    const task = tasks.find(item =>
+      (monitor.taskMeta.id && [item.info_hash, item.name, item.url, item.source_url].includes(monitor.taskMeta.id)) ||
+      (monitor.taskMeta.name && item.name === monitor.taskMeta.name),
+    );
+    if (!task) {
+      monitor.running = false;
+      await updateTaskMonitor(monitorId, monitor);
+      return;
+    }
+    if (task.status === -1 || task.state === 2) {
+      await removeTaskMonitor(monitorId);
+      return;
+    }
+    const complete = task.status === 2 || task.percentDone === 100 || task.state === 1;
+    if (!complete) {
+      monitor.running = false;
+      await updateTaskMonitor(monitorId, monitor);
+      return;
+    }
+
+    const targetCid = await resolveTaskFolderForMonitor(task, monitor.savePathCid);
+    if (!targetCid) {
+      monitor.running = false;
+      await updateTaskMonitor(monitorId, monitor);
+      return;
+    }
+    await cleanNamesForMonitor(targetCid, monitor.filterTerms);
+    await removeTaskMonitor(monitorId);
+  } catch (error) {
+    console.warn('[任务监控] 自动清理失败:', error?.message || error);
+    monitor.running = false;
+    await updateTaskMonitor(monitorId, monitor);
+  }
 }
 
 // Handle generic API requests using fetch

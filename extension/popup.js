@@ -396,30 +396,45 @@ async function getOfflineAuthContext() {
 async function pushBatchLinks() {
 	const input = document.getElementById('push115-links-input')
 	const button = document.getElementById('push115-batch-push')
-	const links = Push115OfflineUtils.extractOfflineLinks(input.value)
+	const detectedLinks = Push115OfflineUtils.extractOfflineLinks(input.value)
+	const links = detectedLinks.slice(0, 50)
 	if (links.length === 0) {
 		showStatus('error', t('batch_empty'))
 		return
 	}
 
 	button.disabled = true
-	button.textContent = t('processing')
+	button.textContent = `${t('processing')} 0/${links.length}`
 	try {
 		const { uid, sign, time } = await getOfflineAuthContext()
 		const cid = Push115PathUtils.normalizeCid(getConfig(CONFIG_KEYS.SAVE_PATH_CID)) || '0'
-		const data = { uid, sign, time, wp_path_id: cid, savepath: '', union: '0' }
-		links.forEach((link, index) => { data[`url[${index}]`] = link })
-
-		const response = await sendMessage('API_REQUEST', {
-			url: 'https://115.com/web/lixian/?ct=lixian&ac=add_task_urls',
-			method: 'POST',
-			data,
-		})
-		if (!(response.data?.state === true || response.data?.state === 1)) {
-			throw new Error(response.data?.error_msg || '115 未接受批量任务')
+		const autoCleanNames = getConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES)
+		const filterTerms = Push115OfflineUtils.normalizeFilterTerms(getConfig(CONFIG_KEYS.NAME_FILTER_LIST))
+		for (let index = 0; index < links.length; index++) {
+			button.textContent = `${t('processing')} ${index + 1}/${links.length}`
+			const response = await sendMessage('API_REQUEST', {
+				url: 'https://115.com/web/lixian/?ct=lixian&ac=add_task_url',
+				method: 'POST',
+				data: { url: links[index], uid, sign, time, wp_path_id: cid, savepath: '' },
+			})
+			if (!(response.data?.state === true || response.data?.state === 1)) {
+				throw new Error(response.data?.error_msg || `第 ${index + 1} 个链接未被 115 接受`)
+			}
+			if (autoCleanNames && filterTerms.length > 0) {
+				const taskMeta = {
+					id: response.data.info_hash || response.data.name || links[index],
+					name: response.data.name || '',
+				}
+				await sendMessage('START_TASK_MONITOR', {
+					taskMeta,
+					savePathCid: cid,
+					filterTerms,
+				})
+			}
 		}
 		input.value = links.join('\n')
-		showStatus('success', t('batch_success').replace('{count}', String(links.length)), 5000)
+		const limitHint = detectedLinks.length > links.length ? '（已按 50 条安全上限提交）' : ''
+		showStatus('success', t('batch_success').replace('{count}', String(links.length)) + limitHint, 5000)
 	} catch (error) {
 		showStatus('error', error.message, 6000)
 	} finally {
