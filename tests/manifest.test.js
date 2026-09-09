@@ -9,7 +9,7 @@ const manifest = JSON.parse(
 
 test('专属版本包含批量处理工具且不声明远程代码', () => {
 	assert.equal(manifest.name, 'Levent 115 离线助手')
-	assert.equal(manifest.version, '1.1.0')
+	assert.equal(manifest.version, '1.1.1')
 	assert.ok(!manifest.content_security_policy?.extension_pages?.includes('unsafe-eval'))
 })
 
