@@ -27,7 +27,7 @@
 | 4 | 清理不会生成空文件名 | `tests/offline-utils.test.js` | 单元 | PASS |
 | 5 | 后台只允许预定义的 HTTPS 115 接口及方法 | `tests/security-utils.test.js` | 单元 | PASS |
 | 6 | 登录响应仅保留 UID/CID/SEID，且向弹窗返回前移除 Cookie 明文 | `tests/security-utils.test.js` | 单元 | PASS |
-| 7 | manifest 权限最小化且版本为专属 v1.1.0 | `tests/manifest.test.js` | 集成 | PASS |
+| 7 | manifest 权限最小化且版本为专属 v1.1.1 | `tests/manifest.test.js` | 集成 | PASS |
 | 8 | 网页确认使用 closed Shadow DOM 和可信用户手势 | `tests/ui-security-regression.test.js` | 安全回归 | PASS |
 | 9 | 弹窗包含批量输入、完整目录展示和广告过滤配置 | `tests/ui-security-regression.test.js` | UI 合约 | PASS |
 
