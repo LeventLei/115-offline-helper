@@ -28,11 +28,14 @@ test('名称广告清理由推送流程中的复选框控制', () => {
 	assert.match(popup, /START_TASK_MONITOR/)
 	assert.match(content, /AUTO_CLEAN_NAMES/)
 	assert.match(content, /cleanNamesRecursively/)
+	assert.match(content, /cleanTaskFolderName/)
 	assert.match(content, /deleteEmptyFoldersRecursively/)
+	assert.match(content, /cleanTaskFolderName[\s\S]*processByCid/)
 	assert.match(content, /processByCid[\s\S]*deleteEmptyFoldersRecursively/)
 	assert.match(popup, /AUTO_DELETE_EMPTY_FOLDERS/)
 	assert.match(popup, /autoDeleteEmptyFolders/)
 	assert.match(read('background.js'), /deleteEmptyFoldersForMonitor/)
+	assert.match(read('background.js'), /renameTaskFolderForMonitor/)
 })
 
 test('网页确认界面位于 closed Shadow DOM 且只接受可信用户手势', () => {
