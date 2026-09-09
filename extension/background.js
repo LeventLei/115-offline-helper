@@ -222,13 +222,13 @@ async function fetch115Json(url, method = 'GET', data = null) {
   return result;
 }
 
-function normalizeMonitorCid(value) {
+function normalizeMonitorCid(value, allowRoot = false) {
   const cid = String(value ?? '').trim();
-  return /^\d+$/.test(cid) && cid !== '0' ? cid : '';
+  return /^\d+$/.test(cid) && (allowRoot || cid !== '0') ? cid : '';
 }
 
 async function startTaskMonitor(details = {}) {
-  const savePathCid = normalizeMonitorCid(details.savePathCid);
+  const savePathCid = normalizeMonitorCid(details.savePathCid, true);
   const filterTerms = Push115OfflineUtils.normalizeFilterTerms(details.filterTerms).slice(0, 50);
   const taskMeta = details.taskMeta && typeof details.taskMeta === 'object' ? {
     id: String(details.taskMeta.id || '').slice(0, 200),
