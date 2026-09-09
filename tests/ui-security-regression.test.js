@@ -13,6 +13,7 @@ test('弹窗提供批量链接、完整目录文字和广告过滤配置', () =>
 	assert.match(html, /id="push115-links-input"/)
 	assert.match(html, /id="push115-name-filters-input"/)
 	assert.match(html, /id="push115-auto-clean-names"/)
+	assert.match(html, /id="push115-auto-delete-empty-folders"/)
 	assert.match(html, /push115-path-select-wrapper/)
 	assert.doesNotMatch(html, /id="push115-selected-path"/)
 	assert.doesNotMatch(html, /id="push115-clean-names"/)
@@ -27,6 +28,11 @@ test('名称广告清理由推送流程中的复选框控制', () => {
 	assert.match(popup, /START_TASK_MONITOR/)
 	assert.match(content, /AUTO_CLEAN_NAMES/)
 	assert.match(content, /cleanNamesRecursively/)
+	assert.match(content, /deleteEmptyFoldersRecursively/)
+	assert.match(content, /processByCid[\s\S]*deleteEmptyFoldersRecursively/)
+	assert.match(popup, /AUTO_DELETE_EMPTY_FOLDERS/)
+	assert.match(popup, /autoDeleteEmptyFolders/)
+	assert.match(read('background.js'), /deleteEmptyFoldersForMonitor/)
 })
 
 test('网页确认界面位于 closed Shadow DOM 且只接受可信用户手势', () => {

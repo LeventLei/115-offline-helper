@@ -5,6 +5,7 @@ const {
 	extractOfflineLinks,
 	normalizeFilterTerms,
 	sanitizeName,
+	isEmptyFolderItems,
 } = require('../extension/offline-utils.js')
 
 test('从同一行空格分隔文本中批量提取磁力链接', () => {
@@ -58,4 +59,10 @@ test('从文件夹或文件名中删除全部广告词并整理空白', () => {
 test('过滤词不匹配或会清空整个名称时不生成危险名称', () => {
 	assert.equal(sanitizeName('movie.mkv', ['广告']), 'movie.mkv')
 	assert.equal(sanitizeName('广告', ['广告']), '广告')
+})
+
+test('只有真正没有子项的目录才视为空文件夹', () => {
+	assert.equal(isEmptyFolderItems([]), true)
+	assert.equal(isEmptyFolderItems([{ fid: '1', sha: 'file-sha' }]), false)
+	assert.equal(isEmptyFolderItems(null), false)
 })
