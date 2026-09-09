@@ -24,6 +24,7 @@ test('名称广告清理由推送流程中的复选框控制', () => {
 	const content = read('content.js')
 
 	assert.match(popup, /AUTO_CLEAN_NAMES/)
+	assert.match(popup, /START_TASK_MONITOR/)
 	assert.match(content, /AUTO_CLEAN_NAMES/)
 	assert.match(content, /cleanNamesRecursively/)
 })
@@ -45,5 +46,7 @@ test('后台不再暴露 Cookie 读取消息或把认证信息写入扩展存储
 	assert.doesNotMatch(source, /expirationDate/)
 	assert.match(source, /httpOnly: true/)
 	assert.match(source, /isAllowedApiRequest/)
+	assert.match(source, /START_TASK_MONITOR/)
+	assert.match(source, /storage\.session/)
 	assert.doesNotMatch(source, /CLEAN_NAMES/)
 })
