@@ -13,12 +13,12 @@
 | 阶段 | 命令 | 结果 | 证据摘要 |
 |---|---|---|---|
 | RED | `npm test` | FAIL | 缺少 `offline-utils.js`、`security-utils.js`；manifest 名称、版本和权限范围不符合目标。 |
-| GREEN | `npm run lint && npm test` | PASS | 20 项测试全部通过，JavaScript 语法检查通过。 |
+| GREEN | `npm run lint && npm test` | PASS | 21 项测试全部通过，JavaScript 语法检查通过。 |
 | Coverage | `npm run test:coverage` | PASS | 生产纯函数行覆盖率 100%，分支覆盖率 86.49%，函数覆盖率 100%；测试文件已从汇总中排除。 |
 | Browser QA | 本地 Playwright 弹窗模拟 | PASS | 4 条空格分隔磁链归一为 4 行并提交；长目录完整展示；广告词清理返回 3 项；无控制台错误或横向溢出。 |
 | UI feedback | 本地 Playwright 弹窗模拟 | PASS | 重复目录行和旧清理按钮不存在；新复选框可勾选并保存，长目录在单个控件内换行展示。 |
 | Batch monitor | 代码检查 + 本地弹窗模拟 | PASS | 批量提交的每条任务都会登记到 `chrome.storage.session` 和 `chrome.alarms`，下载完成并解析任务目录后才执行名称清理。 |
-| Empty-folder cleanup | 代码检查 | PASS | 新复选框在现有整理/清理之后触发，按从里到外顺序删除任务目录内空子文件夹，不删除任务根目录。 |
+| Empty-folder cleanup | `tests/background-operations.test.js` + 代码检查 | PASS | 新复选框在现有整理/清理之后触发，按从里到外顺序删除任务目录内空子文件夹，不删除任务根目录。 |
 
 ## 测试规格
 
