@@ -230,12 +230,13 @@ function normalizeMonitorCid(value, allowRoot = false) {
 async function startTaskMonitor(details = {}) {
   const savePathCid = normalizeMonitorCid(details.savePathCid, true);
   const filterTerms = Push115OfflineUtils.normalizeFilterTerms(details.filterTerms).slice(0, 50);
+  const deleteEmptyFolders = details.deleteEmptyFolders === true;
   const taskMeta = details.taskMeta && typeof details.taskMeta === 'object' ? {
     id: String(details.taskMeta.id || '').slice(0, 200),
     name: String(details.taskMeta.name || '').slice(0, 200),
   } : null;
 
-  if (!savePathCid || !taskMeta || (!taskMeta.id && !taskMeta.name) || filterTerms.length === 0) {
+  if (!savePathCid || !taskMeta || (!taskMeta.id && !taskMeta.name) || (filterTerms.length === 0 && !deleteEmptyFolders)) {
     throw new Error('任务监控参数不完整，已跳过自动清理');
   }
 
@@ -246,6 +247,7 @@ async function startTaskMonitor(details = {}) {
     taskMeta,
     savePathCid,
     filterTerms,
+    deleteEmptyFolders,
     attempts: 0,
     running: false,
   };
@@ -327,6 +329,54 @@ async function cleanNamesForMonitor(rootCid, filterTerms) {
   return { scanned, renamed, truncated: scanned >= 5000 };
 }
 
+async function deleteEmptyFoldersForMonitor(rootCid) {
+  const queue = [{ cid: rootCid, depth: 0 }];
+  const visited = new Set();
+  let scanned = 0;
+  let deleted = 0;
+  let truncated = false;
+
+  const visit = async (folderCid, depth) => {
+    if (!folderCid || visited.has(folderCid) || depth > 10 || scanned >= 5000) {
+      if (scanned >= 5000) truncated = true;
+      return;
+    }
+    visited.add(folderCid);
+
+    const page = await fetch115Json(`https://webapi.115.com/files?aid=1&cid=${folderCid}&o=user_ptime&asc=0&offset=0&show_dir=1&limit=500&snap=0&natsort=1`);
+    const items = Array.isArray(page.data) ? page.data : [];
+    for (const item of items) {
+      if (scanned >= 5000) {
+        truncated = true;
+        break;
+      }
+      scanned++;
+      if (item.sha) continue;
+      const childCid = normalizeMonitorCid(item.cid || item.fid);
+      if (childCid && childCid !== folderCid) queue.push({ cid: childCid, depth: depth + 1 });
+    }
+
+    while (queue.length && scanned < 5000) {
+      const child = queue.shift();
+      await visit(child.cid, child.depth);
+    }
+
+    if (folderCid === rootCid) return;
+    const refreshed = await fetch115Json(`https://webapi.115.com/files?aid=1&cid=${folderCid}&o=user_ptime&asc=0&offset=0&show_dir=1&limit=1&snap=0&natsort=1`);
+    const refreshedItems = Array.isArray(refreshed.data) ? refreshed.data : [];
+    if (!Push115OfflineUtils.isEmptyFolderItems(refreshedItems)) return;
+
+    const result = await fetch115Json('https://webapi.115.com/rb/delete', 'POST', {
+      'fid[0]': folderCid,
+      ignore_warn: '1',
+    });
+    if (result?.state === true || result?.state === 1) deleted++;
+  };
+
+  await visit(rootCid, 0);
+  return { scanned, deleted, truncated };
+}
+
 async function handleTaskMonitorAlarm(monitorId) {
   const monitor = await getTaskMonitor(monitorId);
   if (!monitor || monitor.running) return;
@@ -367,7 +417,8 @@ async function handleTaskMonitorAlarm(monitorId) {
       await updateTaskMonitor(monitorId, monitor);
       return;
     }
-    await cleanNamesForMonitor(targetCid, monitor.filterTerms);
+    if (monitor.filterTerms.length > 0) await cleanNamesForMonitor(targetCid, monitor.filterTerms);
+    if (monitor.deleteEmptyFolders) await deleteEmptyFoldersForMonitor(targetCid);
     await removeTaskMonitor(monitorId);
   } catch (error) {
     console.warn('[任务监控] 自动清理失败:', error?.message || error);

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Levent 115 离线助手",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "author": "LeventLei",
   "description": "批量识别 magnet/ed2k 链接并安全推送到 115，支持目录选择和广告词清理。",
   "permissions": [

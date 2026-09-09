@@ -1,4 +1,4 @@
-# Levent 115 离线助手 v1.1.1：TDD 证据
+# Levent 115 离线助手 v1.1.2：TDD 证据
 
 ## 用户旅程
 
@@ -17,6 +17,7 @@
 | Browser QA | 本地 Playwright 弹窗模拟 | PASS | 4 条空格分隔磁链归一为 4 行并提交；长目录完整展示；广告词清理返回 3 项；无控制台错误或横向溢出。 |
 | UI feedback | 本地 Playwright 弹窗模拟 | PASS | 重复目录行和旧清理按钮不存在；新复选框可勾选并保存，长目录在单个控件内换行展示。 |
 | Batch monitor | 代码检查 + 本地弹窗模拟 | PASS | 批量提交的每条任务都会登记到 `chrome.storage.session` 和 `chrome.alarms`，下载完成并解析任务目录后才执行名称清理。 |
+| Empty-folder cleanup | 代码检查 | PASS | 新复选框在现有整理/清理之后触发，按从里到外顺序删除任务目录内空子文件夹，不删除任务根目录。 |
 
 ## 测试规格
 
@@ -28,7 +29,7 @@
 | 4 | 清理不会生成空文件名 | `tests/offline-utils.test.js` | 单元 | PASS |
 | 5 | 后台只允许预定义的 HTTPS 115 接口及方法 | `tests/security-utils.test.js` | 单元 | PASS |
 | 6 | 登录响应仅保留 UID/CID/SEID，且向弹窗返回前移除 Cookie 明文 | `tests/security-utils.test.js` | 单元 | PASS |
-| 7 | manifest 权限最小化且版本为专属 v1.1.1 | `tests/manifest.test.js` | 集成 | PASS |
+| 7 | manifest 权限最小化且版本为专属 v1.1.2 | `tests/manifest.test.js` | 集成 | PASS |
 | 8 | 网页确认使用 closed Shadow DOM 和可信用户手势 | `tests/ui-security-regression.test.js` | 安全回归 | PASS |
 | 9 | 弹窗包含批量输入、完整目录展示和广告过滤配置 | `tests/ui-security-regression.test.js` | UI 合约 | PASS |
 

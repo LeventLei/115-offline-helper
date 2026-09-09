@@ -71,10 +71,15 @@
 		return cleaned || original
 	}
 
+	function isEmptyFolderItems(items) {
+		return Array.isArray(items) && items.length === 0
+	}
+
 	const api = {
 		extractOfflineLinks,
 		normalizeFilterTerms,
 		sanitizeName,
+		isEmptyFolderItems,
 	}
 
 	global.Push115OfflineUtils = api

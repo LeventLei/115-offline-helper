@@ -123,6 +123,7 @@
             <tr><td><code>storage</code></td><td>Save extension preferences locally in the browser</td></tr>
             <tr><td><code>cookies</code></td><td>Read 115.com login cookies to authenticate API requests on your behalf</td></tr>
             <tr><td><code>scripting</code></td><td>Inject the link detection content script into pages when "Auto detect links" is enabled</td></tr>
+            <tr><td><code>alarms</code></td><td>Continue checking pushed tasks after the popup closes so optional filename and empty-folder cleanup runs only after the task folder is confirmed</td></tr>
             <tr><td>HTTP/HTTPS pages (optional)</td><td>Only requested when you enable "Auto detect links". Allows handling links you click or text you copy; disabling the feature revokes it.</td></tr>
         </table>
         <p>We follow the <strong>principle of least privilege</strong>: we only request the minimum permissions necessary for the Extension to function. The broadest permission (<code>&lt;all_urls&gt;</code>) is optional and requires explicit user consent.</p>
@@ -135,7 +136,6 @@
             <tr><td>qrcodeapi.115.com</td><td>Generate QR codes for login authentication</td></tr>
             <tr><td>passportapi.115.com</td><td>QR code login polling</td></tr>
             <tr><td>webapi.115.com</td><td>Submit offline download tasks, manage files (move, rename, delete)</td></tr>
-            <tr><td>proapi.115.com</td><td>Alternative API endpoints for file operations</td></tr>
         </table>
         <p>No data is ever sent to any server other than those listed above. All requests use <strong>HTTPS</strong>.</p>
 
@@ -251,6 +251,7 @@
             <tr><td><code>storage</code></td><td>在浏览器本地保存扩展偏好设置</td></tr>
             <tr><td><code>cookies</code></td><td>读取 115.com 的登录 Cookie 以代表您进行 API 认证</td></tr>
             <tr><td><code>scripting</code></td><td>在开启"自动识别链接"后向页面注入链接检测脚本</td></tr>
+            <tr><td><code>alarms</code></td><td>在弹窗关闭后继续检查已推送任务，确认任务目录后执行可选的名称和空文件夹清理</td></tr>
             <tr><td>HTTP/HTTPS 页面（可选）</td><td>仅在开启“自动识别链接”时请求，用于处理您点击的链接或复制的文本；关闭功能即撤销。</td></tr>
         </table>
         <p>我们遵循<strong>最小权限原则</strong>：仅请求扩展功能所需的最低权限。最广泛的权限（<code>&lt;all_urls&gt;</code>）为可选权限，需要用户明确同意。</p>

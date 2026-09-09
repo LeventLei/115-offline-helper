@@ -8,13 +8,13 @@
 </h1>
 
 <p align="center">
-  <strong>Detect magnet/ed2k links and push them to your 115.com cloud offline download with one click.</strong>
+  <strong>Batch-detect magnet/ed2k links, push them to 115.com, and clean task names safely.</strong>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/manifest-v3-blue" alt="Manifest V3">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/version-1.1.1-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.2-orange" alt="Version">
 </p>
 
 ---
@@ -27,6 +27,7 @@
 - 📁 **Custom save directory** — Choose which 115 folder to save downloads to
 - 🗑️ **Auto-delete small files** — Remove files under a specified size (e.g., ads)
 - 📂 **Auto-organize videos** — Move video files into folders based on filename
+- 🧹 **Auto-clean task folders** — Remove configured ad text and empty child folders after the task directory is confirmed
 - 📱 **QR code login** — Log into 115.com directly from the extension popup
 - 🌐 **Bilingual UI** — Supports both Chinese and English
 
@@ -89,6 +90,8 @@ Install directly from the Chrome Web Store:
 | Auto-detect links | Detect links on all pages via content script |
 | Auto-delete small files | Remove files smaller than specified MB |
 | Auto-organize videos | Move video files into named folders |
+| Auto-clean filename ads | Clean configured terms during pushed-task processing |
+| Auto-delete empty folders | Remove empty child folders after other cleanup and organization finish |
 
 ## ❓ FAQ
 
@@ -103,7 +106,7 @@ Install directly from the Chrome Web Store:
 
 ## 🔒 Privacy
 
-- All data is stored locally via `chrome.storage.local`
+- Preferences are stored locally via `chrome.storage.local`; authentication cookies are not duplicated there
 - No user data is collected, transmitted, or shared with third parties
 - Only communicates with `*.115.com` domains
 - [Full Privacy Policy](privacy-policy.html)

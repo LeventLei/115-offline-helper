@@ -10,6 +10,7 @@ const CONFIG_KEYS = {
 	AUTO_ORGANIZE: 'push115_auto_organize',
 	AUTO_DETECT: 'push115_auto_detect',
 	AUTO_CLEAN_NAMES: 'push115_auto_clean_names',
+	AUTO_DELETE_EMPTY_FOLDERS: 'push115_auto_delete_empty_folders',
 	NAME_FILTER_LIST: 'push115_name_filter_list',
 	I18N_LOCALE: 'push115_i18n_locale',
 	THEME: 'push115_theme',
@@ -24,6 +25,7 @@ const DEFAULT_CONFIG = {
 	[CONFIG_KEYS.AUTO_ORGANIZE]: false,
 	[CONFIG_KEYS.AUTO_DETECT]: false,
 	[CONFIG_KEYS.AUTO_CLEAN_NAMES]: false,
+	[CONFIG_KEYS.AUTO_DELETE_EMPTY_FOLDERS]: false,
 	[CONFIG_KEYS.NAME_FILTER_LIST]: '',
 	[CONFIG_KEYS.I18N_LOCALE]: 'zh-CN',
 	[CONFIG_KEYS.THEME]: 'auto',
@@ -50,6 +52,8 @@ const I18N_STRINGS = {
 		clean_fail: ' 清理失败: ',
 		cleaning_names: '🧹 正在清理文件名广告词...',
 		clean_names_result: ' 清理了 {count} 个名称',
+		cleaning_empty_folders: '🗂️ 正在清理空文件夹...',
+		empty_folders_result: ' 删除了 {count} 个空文件夹',
 		panel_title: '115离线助手',
 	},
 	'en-US': {
@@ -72,6 +76,8 @@ const I18N_STRINGS = {
 		clean_fail: ' Clean failed: ',
 		cleaning_names: '🧹 Cleaning filename ads...',
 		clean_names_result: ' Cleaned {count} names',
+		cleaning_empty_folders: '🗂️ Removing empty folders...',
+		empty_folders_result: ' Removed {count} empty folders',
 		panel_title: '115 Offline Helper',
 	},
 }
@@ -325,6 +331,64 @@ async function cleanNamesRecursively(cid, rawTerms) {
 	return { renamed, scanned, truncated }
 }
 
+async function deleteEmptyFoldersRecursively(cid) {
+	const rootCid = Push115PathUtils.normalizeCid(cid)
+	if (!rootCid || rootCid === '0') return { deleted: 0, scanned: 0, truncated: false }
+
+	const visited = new Set()
+	let deleted = 0
+	let scanned = 0
+	let truncated = false
+
+	const visit = async (folderCid, depth) => {
+		if (!folderCid || visited.has(folderCid) || depth > 10 || scanned >= 5000) {
+			if (scanned >= 5000) truncated = true
+			return false
+		}
+		visited.add(folderCid)
+
+		let page
+		try {
+			page = await getFileList(folderCid, 0, 500)
+		} catch (error) {
+			console.warn('[空文件夹清理] 读取目录失败:', folderCid, error?.message || error)
+			return false
+		}
+		const items = Array.isArray(page?.data) ? page.data : []
+		if (items.length > 0) {
+			for (const item of items) {
+				if (scanned >= 5000) {
+					truncated = true
+					break
+				}
+				scanned++
+				if (item.sha) continue
+				const childCid = Push115PathUtils.normalizeCid(item.cid || item.fid)
+				if (childCid && childCid !== folderCid) await visit(childCid, depth + 1)
+			}
+		}
+
+		// 子目录可能刚刚被删除，重新读取后再判断当前目录是否为空。
+		if (folderCid === rootCid) return false
+		try {
+			const refreshed = await getFileList(folderCid, 0, 1)
+			const refreshedItems = Array.isArray(refreshed?.data) ? refreshed.data : []
+			if (!Push115OfflineUtils.isEmptyFolderItems(refreshedItems)) return false
+			const result = await deleteFiles(folderCid)
+			if (result?.state === true || result?.state === 1) {
+				deleted++
+				return true
+			}
+		} catch (error) {
+			console.warn('[空文件夹清理] 删除目录失败:', folderCid, error?.message || error)
+		}
+		return false
+	}
+
+	await visit(rootCid, 0)
+	return { deleted, scanned, truncated }
+}
+
 async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'default') {
 	const maxRetries = 120
 	let retries = 0
@@ -370,6 +434,7 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 		const autoDelete = getConfig(CONFIG_KEYS.AUTO_DELETE_SMALL)
 		const autoOrganize = getConfig(CONFIG_KEYS.AUTO_ORGANIZE)
 		const autoCleanNames = getConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES)
+		const autoDeleteEmptyFolders = getConfig(CONFIG_KEYS.AUTO_DELETE_EMPTY_FOLDERS)
 		const messages = []
 
 			if (autoDelete) {
@@ -394,6 +459,14 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 			if (modalType === 'toast') showStickyToast('info', '正在按文件名整理视频，请稍候...')
 			const organizedCount = await organizeVideos(targetCid, currentFolderName)
 			if (organizedCount > 0) messages.push(`整理 ${organizedCount} 个视频`)
+		}
+
+		if (autoDeleteEmptyFolders) {
+			if (modalType === 'toast') showStickyToast('info', t('cleaning_empty_folders'))
+			const emptyResult = await deleteEmptyFoldersRecursively(targetCid)
+			if (emptyResult.deleted > 0) {
+				messages.push(t('empty_folders_result').replace('{count}', String(emptyResult.deleted)))
+			}
 		}
 
 		if (modalType === 'toast') {
@@ -964,8 +1037,9 @@ function createConfirmModal(rawLinks, type) {
 				const autoOrganize = getConfig(CONFIG_KEYS.AUTO_ORGANIZE)
 				const autoDelete = getConfig(CONFIG_KEYS.AUTO_DELETE_SMALL)
 				const autoCleanNames = getConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES)
+				const autoDeleteEmptyFolders = getConfig(CONFIG_KEYS.AUTO_DELETE_EMPTY_FOLDERS)
 
-				if (links.length === 1 && (autoOrganize || autoDelete || autoCleanNames)) {
+				if (links.length === 1 && (autoOrganize || autoDelete || autoCleanNames || autoDeleteEmptyFolders)) {
 					monitorTaskAndOrganize(
 						{
 							id: res.data.info_hash || res.data.name || links[0],

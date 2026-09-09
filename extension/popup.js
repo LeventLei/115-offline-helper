@@ -10,6 +10,7 @@ const CONFIG_KEYS = {
 	AUTO_ORGANIZE: 'push115_auto_organize',
 	AUTO_DETECT: 'push115_auto_detect',
 	AUTO_CLEAN_NAMES: 'push115_auto_clean_names',
+	AUTO_DELETE_EMPTY_FOLDERS: 'push115_auto_delete_empty_folders',
 	NAME_FILTER_LIST: 'push115_name_filter_list',
 	I18N_LOCALE: 'push115_i18n_locale',
 	THEME: 'push115_theme',
@@ -24,6 +25,7 @@ const DEFAULT_CONFIG = {
 	[CONFIG_KEYS.AUTO_ORGANIZE]: false,
 	[CONFIG_KEYS.AUTO_DETECT]: false,
 	[CONFIG_KEYS.AUTO_CLEAN_NAMES]: false,
+	[CONFIG_KEYS.AUTO_DELETE_EMPTY_FOLDERS]: false,
 	[CONFIG_KEYS.NAME_FILTER_LIST]: '',
 	[CONFIG_KEYS.I18N_LOCALE]: 'zh-CN',
 	[CONFIG_KEYS.THEME]: 'auto',
@@ -48,6 +50,8 @@ const I18N_STRINGS = {
 		name_filters_hint: '支持直接粘贴 Markdown 链接形式，清理时按字面量匹配',
 		auto_clean_names_label: '自动清理文件名广告词',
 		auto_clean_names_hint: '推送完成并确认任务目录后自动执行',
+		auto_delete_empty_folders_label: '自动删除空文件夹',
+		auto_delete_empty_folders_hint: '在文件整理和清理完成后检查本次任务目录',
 		auto_delete_label: '自动删除小文件',
 		delete_size_label_pre: '删除小于',
 		delete_size_label_post: 'MB的文件',
@@ -87,6 +91,8 @@ const I18N_STRINGS = {
 		name_filters_hint: 'Markdown links are accepted and matched as literal text',
 		auto_clean_names_label: 'Automatically clean filename ads',
 		auto_clean_names_hint: 'Runs after a pushed task completes and its folder is confirmed',
+		auto_delete_empty_folders_label: 'Automatically delete empty folders',
+		auto_delete_empty_folders_hint: 'Checks the task folder after organization and cleanup finish',
 		auto_delete_label: 'Auto delete small files',
 		delete_size_label_pre: 'Delete files <',
 		delete_size_label_post: 'MB',
@@ -197,6 +203,8 @@ function applyLocale() {
 	document.getElementById('hint-name-filters').textContent = t('name_filters_hint')
 	document.getElementById('label-auto-clean-names').textContent = t('auto_clean_names_label')
 	document.getElementById('hint-auto-clean-names').textContent = t('auto_clean_names_hint')
+	document.getElementById('label-auto-delete-empty-folders').textContent = t('auto_delete_empty_folders_label')
+	document.getElementById('hint-auto-delete-empty-folders').textContent = t('auto_delete_empty_folders_hint')
 	setBtnContent('push115-check-login', 'icons/check.png', t('check_login_text'))
 	setBtnContent('push115-login-btn', 'icons/115.png', t('login_btn'))
 
@@ -249,6 +257,7 @@ async function init() {
 	document.getElementById('push115-save-dirs-input').value = getConfig(CONFIG_KEYS.SAVE_PATH_LIST)
 	document.getElementById('push115-name-filters-input').value = getConfig(CONFIG_KEYS.NAME_FILTER_LIST)
 	document.getElementById('push115-auto-clean-names').checked = getConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES)
+	document.getElementById('push115-auto-delete-empty-folders').checked = getConfig(CONFIG_KEYS.AUTO_DELETE_EMPTY_FOLDERS)
 	document.getElementById('push115-auto-detect').checked = getConfig(CONFIG_KEYS.AUTO_DETECT)
 	renderSaveDirSelect()
 
@@ -340,6 +349,10 @@ function bindEvents() {
 		setConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES, e.target.checked)
 	})
 
+	document.getElementById('push115-auto-delete-empty-folders').addEventListener('change', e => {
+		setConfig(CONFIG_KEYS.AUTO_DELETE_EMPTY_FOLDERS, e.target.checked)
+	})
+
 	// Save directory
 	document.getElementById('push115-save-dir-select').addEventListener('change', e => {
 		const cid = Push115PathUtils.normalizeCid(e.target.value) || '0'
@@ -409,6 +422,7 @@ async function pushBatchLinks() {
 		const { uid, sign, time } = await getOfflineAuthContext()
 		const cid = Push115PathUtils.normalizeCid(getConfig(CONFIG_KEYS.SAVE_PATH_CID)) || '0'
 		const autoCleanNames = getConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES)
+		const autoDeleteEmptyFolders = getConfig(CONFIG_KEYS.AUTO_DELETE_EMPTY_FOLDERS)
 		const filterTerms = Push115OfflineUtils.normalizeFilterTerms(getConfig(CONFIG_KEYS.NAME_FILTER_LIST))
 		for (let index = 0; index < links.length; index++) {
 			button.textContent = `${t('processing')} ${index + 1}/${links.length}`
@@ -420,7 +434,7 @@ async function pushBatchLinks() {
 			if (!(response.data?.state === true || response.data?.state === 1)) {
 				throw new Error(response.data?.error_msg || `第 ${index + 1} 个链接未被 115 接受`)
 			}
-			if (autoCleanNames && filterTerms.length > 0) {
+			if ((autoCleanNames && filterTerms.length > 0) || autoDeleteEmptyFolders) {
 				const taskMeta = {
 					id: response.data.info_hash || response.data.name || links[index],
 					name: response.data.name || '',
@@ -429,6 +443,7 @@ async function pushBatchLinks() {
 					taskMeta,
 					savePathCid: cid,
 					filterTerms,
+					deleteEmptyFolders: autoDeleteEmptyFolders,
 				})
 			}
 		}
