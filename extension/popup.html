@@ -46,8 +46,23 @@
 					</div>
 
 					<div class="push115-section">
+						<label class="push115-label" id="label-batch-links">批量离线链接</label>
+						<textarea
+							id="push115-links-input"
+							class="push115-textarea push115-links-input"
+							placeholder="粘贴 magnet/ed2k；支持空格、换行混排"
+						></textarea>
+						<div class="push115-hint" id="hint-batch-links">将自动识别、去重后批量提交</div>
+						<button class="push115-btn push115-btn-primary push115-btn-full push115-section-action" id="push115-batch-push">
+							识别并推送
+						</button>
+					</div>
+
+					<div class="push115-divider"></div>
+
+					<div class="push115-section">
 						<label class="push115-label" id="label-save-path">默认保存目录:</label>
-						<div class="push115-select-wrapper">
+						<div class="push115-select-wrapper push115-path-select-wrapper">
 							<select id="push115-save-dir-select" class="push115-select"></select>
 						</div>
 						<div class="push115-hint" id="hint-cid">提示: 在“设置”页维护目录列表（每行：目录名:CID）</div>
@@ -62,6 +77,16 @@
 								>自动删除小文件</label
 							>
 						</div>
+					</div>
+
+					<div class="push115-section">
+						<div class="push115-checkbox-group">
+							<input type="checkbox" class="push115-checkbox" id="push115-auto-clean-names" />
+							<label class="push115-checkbox-label" for="push115-auto-clean-names" id="label-auto-clean-names"
+								>自动清理文件名广告词</label
+							>
+						</div>
+						<div class="push115-hint" id="hint-auto-clean-names">推送完成并确认任务目录后自动执行</div>
 					</div>
 
 					<div class="push115-section" id="push115-delete-section" style="display: none">
@@ -87,6 +112,16 @@
 							>
 						</div>
 						<div class="push115-hint" id="hint-organize">自动将散落视频按文件名整理到对应文件夹</div>
+					</div>
+
+					<div class="push115-section">
+						<div class="push115-checkbox-group">
+							<input type="checkbox" class="push115-checkbox" id="push115-auto-delete-empty-folders" />
+							<label class="push115-checkbox-label" for="push115-auto-delete-empty-folders" id="label-auto-delete-empty-folders"
+								>自动删除空文件夹</label
+							>
+						</div>
+						<div class="push115-hint" id="hint-auto-delete-empty-folders">在文件整理和清理完成后检查本次任务目录</div>
 					</div>
 
 					<div class="push115-section push115-btn-group">
@@ -132,6 +167,16 @@
 							placeholder="例如：98预处理:3280039214730565554"
 						></textarea>
 						<div class="push115-hint" id="hint-save-dirs">格式：目录名:CID，例如：电影:123456789</div>
+					</div>
+
+					<div class="push115-section">
+						<label class="push115-label" id="label-name-filters">文件名广告过滤词（每行一个）</label>
+						<textarea
+							id="push115-name-filters-input"
+							class="push115-textarea"
+							placeholder="例如：【高清剧集网发布 www.BPHDTV.com】"
+						></textarea>
+						<div class="push115-hint" id="hint-name-filters">支持直接粘贴 Markdown 链接形式，清理时按字面量匹配</div>
 					</div>
 
 					<div class="push115-divider"></div>
@@ -200,6 +245,7 @@
 		</div>
 
 		<script src="path-utils.js"></script>
+		<script src="offline-utils.js"></script>
 		<script src="popup.js"></script>
 	</body>
 </html>

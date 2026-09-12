@@ -9,6 +9,9 @@ const CONFIG_KEYS = {
 	DELETE_SIZE_THRESHOLD: 'push115_delete_size_threshold',
 	AUTO_ORGANIZE: 'push115_auto_organize',
 	AUTO_DETECT: 'push115_auto_detect',
+	AUTO_CLEAN_NAMES: 'push115_auto_clean_names',
+	AUTO_DELETE_EMPTY_FOLDERS: 'push115_auto_delete_empty_folders',
+	NAME_FILTER_LIST: 'push115_name_filter_list',
 	I18N_LOCALE: 'push115_i18n_locale',
 	THEME: 'push115_theme',
 }
@@ -21,6 +24,9 @@ const DEFAULT_CONFIG = {
 	[CONFIG_KEYS.DELETE_SIZE_THRESHOLD]: 100,
 	[CONFIG_KEYS.AUTO_ORGANIZE]: false,
 	[CONFIG_KEYS.AUTO_DETECT]: false,
+	[CONFIG_KEYS.AUTO_CLEAN_NAMES]: false,
+	[CONFIG_KEYS.AUTO_DELETE_EMPTY_FOLDERS]: false,
+	[CONFIG_KEYS.NAME_FILTER_LIST]: '',
 	[CONFIG_KEYS.I18N_LOCALE]: 'zh-CN',
 	[CONFIG_KEYS.THEME]: 'auto',
 }
@@ -44,6 +50,10 @@ const I18N_STRINGS = {
 		cleaning: '🗑️ 正在清理小文件...',
 		clean_success: ' 清理完成: ',
 		clean_fail: ' 清理失败: ',
+		cleaning_names: '🧹 正在清理文件名广告词...',
+		clean_names_result: ' 清理了 {count} 个名称',
+		cleaning_empty_folders: '🗂️ 正在清理空文件夹...',
+		empty_folders_result: ' 删除了 {count} 个空文件夹',
 		panel_title: '115离线助手',
 	},
 	'en-US': {
@@ -64,6 +74,10 @@ const I18N_STRINGS = {
 		cleaning: '🗑️ Cleaning small files...',
 		clean_success: ' Cleaned: ',
 		clean_fail: ' Clean failed: ',
+		cleaning_names: '🧹 Cleaning filename ads...',
+		clean_names_result: ' Cleaned {count} names',
+		cleaning_empty_folders: '🗂️ Removing empty folders...',
+		empty_folders_result: ' Removed {count} empty folders',
 		panel_title: '115 Offline Helper',
 	},
 }
@@ -174,9 +188,9 @@ async function getOfflineTasks() {
 	throw new Error('获取任务列表失败')
 }
 
-async function getFileList(cid = '0') {
+async function getFileList(cid = '0', offset = 0, limit = 500) {
 	const res = await sendMessage('API_REQUEST', {
-		url: `https://webapi.115.com/files?aid=1&cid=${cid}&o=user_ptime&asc=0&offset=0&show_dir=1&limit=500&snap=0&natsort=1`,
+		url: `https://webapi.115.com/files?aid=1&cid=${cid}&o=user_ptime&asc=0&offset=${offset}&show_dir=1&limit=${limit}&snap=0&natsort=1`,
 		method: 'GET',
 	})
 	return res.data // Return full response
@@ -267,6 +281,149 @@ async function cleanSmallFiles(cid, thresholdMB) {
 	return allSmallFiles.length
 }
 
+async function cleanNamesRecursively(cid, rawTerms) {
+	const rootCid = Push115PathUtils.normalizeCid(cid)
+	const terms = Push115OfflineUtils.normalizeFilterTerms(rawTerms).slice(0, 50)
+	if (!rootCid || rootCid === '0' || terms.length === 0) return { renamed: 0, scanned: 0, truncated: false }
+
+	const queue = [{ cid: rootCid, depth: 0 }]
+	const visited = new Set()
+	let renamed = 0
+	let scanned = 0
+	let truncated = false
+
+	while (queue.length && scanned < 5000) {
+		const current = queue.shift()
+		if (visited.has(current.cid) || current.depth > 10) continue
+		visited.add(current.cid)
+
+		const items = []
+		for (let offset = 0; offset < 5000 && items.length < 5000; offset += 500) {
+			const page = await getFileList(current.cid, offset, 500)
+			const pageItems = Array.isArray(page?.data) ? page.data : []
+			items.push(...pageItems)
+			if (pageItems.length < 500) break
+		}
+
+		for (const item of items) {
+			if (scanned >= 5000) {
+				truncated = true
+				break
+			}
+			scanned++
+			const id = Push115PathUtils.normalizeCid(item.fid || item.cid)
+			const name = String(item.n || item.name || '')
+			if (!item.sha && id && id !== current.cid) queue.push({ cid: id, depth: current.depth + 1 })
+			if (!id || !name) continue
+
+			const nextName = Push115OfflineUtils.sanitizeName(name, terms)
+			if (nextName === name) continue
+			try {
+				const result = await renameFile(id, nextName)
+				if (result?.state === true || result?.state === 1 || result?.data?.state === true) renamed++
+			} catch (error) {
+				console.warn('[名称清理] 重命名失败:', name, error?.message || error)
+			}
+			await sleep(250)
+		}
+	}
+
+	return { renamed, scanned, truncated }
+}
+
+async function cleanTaskFolderName(taskFolderCid, taskName, rawTerms, parentCid = '') {
+	const rootCid = Push115PathUtils.normalizeCid(taskFolderCid)
+	const terms = Push115OfflineUtils.normalizeFilterTerms(rawTerms).slice(0, 50)
+	if (!rootCid || rootCid === '0' || terms.length === 0) return { name: String(taskName || ''), renamed: 0 }
+
+	let currentName = String(taskName || '').trim()
+	if (parentCid) {
+		try {
+			const parent = await getFileList(parentCid, 0, 500)
+			const match = parent?.data?.find(item => {
+				if (item.sha) return false
+				const itemCid = Push115PathUtils.normalizeCid(item.cid || item.fid)
+				return itemCid === rootCid
+			})
+			if (match) currentName = String(match.n || match.name || currentName).trim()
+		} catch (error) {
+			console.warn('[名称清理] 读取任务根目录名称失败:', error?.message || error)
+		}
+	}
+
+	if (!currentName || /^(?:magnet:|ed2k:)/i.test(currentName)) return { name: currentName, renamed: 0 }
+	const nextName = Push115OfflineUtils.sanitizeName(currentName, terms)
+	if (nextName === currentName) return { name: currentName, renamed: 0 }
+
+	try {
+		const result = await renameFile(rootCid, nextName)
+		if (result?.state === true || result?.state === 1 || result?.data?.state === true) {
+			return { name: nextName, renamed: 1 }
+		}
+	} catch (error) {
+		console.warn('[名称清理] 任务根文件夹重命名失败:', currentName, error?.message || error)
+	}
+	return { name: currentName, renamed: 0 }
+}
+
+async function deleteEmptyFoldersRecursively(cid) {
+	const rootCid = Push115PathUtils.normalizeCid(cid)
+	if (!rootCid || rootCid === '0') return { deleted: 0, scanned: 0, truncated: false }
+
+	const visited = new Set()
+	let deleted = 0
+	let scanned = 0
+	let truncated = false
+
+	const visit = async (folderCid, depth) => {
+		if (!folderCid || visited.has(folderCid) || depth > 10 || scanned >= 5000) {
+			if (scanned >= 5000) truncated = true
+			return false
+		}
+		visited.add(folderCid)
+
+		let page
+		try {
+			page = await getFileList(folderCid, 0, 500)
+		} catch (error) {
+			console.warn('[空文件夹清理] 读取目录失败:', folderCid, error?.message || error)
+			return false
+		}
+		const items = Array.isArray(page?.data) ? page.data : []
+		if (items.length > 0) {
+			for (const item of items) {
+				if (scanned >= 5000) {
+					truncated = true
+					break
+				}
+				scanned++
+				if (item.sha) continue
+				const childCid = Push115PathUtils.normalizeCid(item.cid || item.fid)
+				if (childCid && childCid !== folderCid) await visit(childCid, depth + 1)
+			}
+		}
+
+		// 子目录可能刚刚被删除，重新读取后再判断当前目录是否为空。
+		if (folderCid === rootCid) return false
+		try {
+			const refreshed = await getFileList(folderCid, 0, 1)
+			const refreshedItems = Array.isArray(refreshed?.data) ? refreshed.data : []
+			if (!Push115OfflineUtils.isEmptyFolderItems(refreshedItems)) return false
+			const result = await deleteFiles(folderCid)
+			if (result?.state === true || result?.state === 1) {
+				deleted++
+				return true
+			}
+		} catch (error) {
+			console.warn('[空文件夹清理] 删除目录失败:', folderCid, error?.message || error)
+		}
+		return false
+	}
+
+	await visit(rootCid, 0)
+	return { deleted, scanned, truncated }
+}
+
 async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'default') {
 	const maxRetries = 120
 	let retries = 0
@@ -308,22 +465,46 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 		return ''
 	}
 
-	const processByCid = async (targetCid, currentFolderName = '') => {
+	const processByCid = async (targetCid, currentFolderName = '', rootRenamedCount = 0) => {
 		const autoDelete = getConfig(CONFIG_KEYS.AUTO_DELETE_SMALL)
 		const autoOrganize = getConfig(CONFIG_KEYS.AUTO_ORGANIZE)
+		const autoCleanNames = getConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES)
+		const autoDeleteEmptyFolders = getConfig(CONFIG_KEYS.AUTO_DELETE_EMPTY_FOLDERS)
 		const messages = []
 
-		if (autoDelete) {
+			if (autoDelete) {
 			if (modalType === 'toast') showStickyToast('info', '正在删除小文件，请稍候...')
 			const threshold = Number(getConfig(CONFIG_KEYS.DELETE_SIZE_THRESHOLD) || 100)
 			const deletedCount = await cleanSmallFiles(targetCid, threshold)
-			if (deletedCount > 0) messages.push(`删除 ${deletedCount} 个小文件`)
-		}
+				if (deletedCount > 0) messages.push(`删除 ${deletedCount} 个小文件`)
+			}
+
+			if (autoCleanNames) {
+				const filterTerms = Push115OfflineUtils.normalizeFilterTerms(getConfig(CONFIG_KEYS.NAME_FILTER_LIST))
+				if (filterTerms.length > 0) {
+					if (modalType === 'toast') showStickyToast('info', t('cleaning_names'))
+					const cleanResult = await cleanNamesRecursively(targetCid, filterTerms)
+					const totalRenamed = cleanResult.renamed + rootRenamedCount
+					if (totalRenamed > 0) {
+						messages.push(t('clean_names_result').replace('{count}', String(totalRenamed)))
+					}
+				} else if (rootRenamedCount > 0) {
+					messages.push(t('clean_names_result').replace('{count}', String(rootRenamedCount)))
+				}
+			}
 
 		if (autoOrganize) {
 			if (modalType === 'toast') showStickyToast('info', '正在按文件名整理视频，请稍候...')
 			const organizedCount = await organizeVideos(targetCid, currentFolderName)
 			if (organizedCount > 0) messages.push(`整理 ${organizedCount} 个视频`)
+		}
+
+		if (autoDeleteEmptyFolders) {
+			if (modalType === 'toast') showStickyToast('info', t('cleaning_empty_folders'))
+			const emptyResult = await deleteEmptyFoldersRecursively(targetCid)
+			if (emptyResult.deleted > 0) {
+				messages.push(t('empty_folders_result').replace('{count}', String(emptyResult.deleted)))
+			}
 		}
 
 		if (modalType === 'toast') {
@@ -381,18 +562,23 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 			}
 
 			const taskFolderCid = await ensureUsableCid(taskFileCid || (await resolveTaskFolderCid()))
-			const targetCid = taskFolderCid || (await ensureUsableCid(savePathCid))
-			if (!targetCid) {
+			if (!taskFolderCid) {
 				if (modalType === 'toast') {
 					hideStickyToast()
-					showToast('error', '未找到可处理目录，请稍后重试', 7000)
+					showToast('error', '无法确认新任务的独立目录，已安全停止自动处理', 7000)
 				}
 				return
 			}
 
-			// 仅当明确定位到“任务文件夹”时，才把任务名作为当前目录名用于 skip 逻辑
-			const organizeFolderName = taskFolderCid ? taskName : ''
-			await processByCid(targetCid, organizeFolderName)
+			let effectiveTaskName = taskName
+			let rootRenamedCount = 0
+			if (getConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES)) {
+				const filterTerms = Push115OfflineUtils.normalizeFilterTerms(getConfig(CONFIG_KEYS.NAME_FILTER_LIST))
+				const rootResult = await cleanTaskFolderName(taskFolderCid, taskName, filterTerms, savePathCid)
+				effectiveTaskName = rootResult.name || taskName
+				rootRenamedCount = rootResult.renamed
+			}
+			await processByCid(taskFolderCid, effectiveTaskName, rootRenamedCount)
 			return
 		} catch (err) {
 			console.error('Monitor error:', err)
@@ -403,23 +589,9 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 		}
 	}
 
-	// 超时后兜底：直接在保存目录做一次处理
-	try {
-		if (modalType === 'toast') {
-			showStickyToast('warning', '监控超时，正在尝试按保存目录执行一次兜底处理...')
-		}
-		const fallbackCid = await ensureUsableCid(savePathCid)
-		if (fallbackCid) {
-			await processByCid(fallbackCid, '')
-			return
-		}
-	} catch (e) {
-		console.error('[监控] 兜底处理失败:', e)
-	}
-
 	if (modalType === 'toast') {
 		hideStickyToast()
-		showToast('error', '处理超时，建议稍后在 115 网页手动刷新后重试', 8000)
+		showToast('error', '处理超时且无法确认任务目录，已安全停止自动处理', 8000)
 	}
 }
 
@@ -561,14 +733,8 @@ function getSelectedText() {
 	return window.getSelection()?.toString().trim() || ''
 }
 
-function detectOfflineLink(text) {
-	if (/^magnet:\?xt=urn:[a-z0-9]+:[a-z0-9]{32,}/i.test(text)) {
-		return { url: text, type: 'Magnet' }
-	}
-	if (/^ed2k:\/\/\|file\|/i.test(text)) {
-		return { url: text, type: 'ED2K' }
-	}
-	return null
+function hasTrustedUserGesture(event) {
+	return Boolean(event?.isTrusted && (!navigator.userActivation || navigator.userActivation.isActive))
 }
 
 function getRootLabel() {
@@ -581,6 +747,8 @@ function getSavePathOptions() {
 }
 
 // Inject modal styles
+let injectedStylesText = ''
+
 function injectModalStyles() {
 	const style = document.createElement('style')
 	style.textContent = `
@@ -595,9 +763,9 @@ function injectModalStyles() {
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
     }
     @keyframes push115Fade { from { opacity: 0; } to { opacity: 1; } }
-    .push115-modal {
-      background: #fff; border-radius: 16px;
-      width: 400px; max-width: 90vw;
+	    .push115-modal {
+	      background: #fff; border-radius: 16px;
+	      width: 520px; max-width: 92vw;
       box-shadow: 0 20px 60px rgba(0,0,0,0.2);
       animation: push115Slide 0.25s cubic-bezier(0.4,0,0.2,1);
       overflow: hidden;
@@ -618,9 +786,10 @@ function injectModalStyles() {
     .push115-modal-info {
       font-size: 13px; color: #86868b; margin-bottom: 8px;
     }
-    .push115-modal-path-row {
-      display: flex;
-      align-items: center;
+	    .push115-modal-path-row {
+	      display: flex;
+	      align-items: stretch;
+	      flex-direction: column;
       gap: 8px;
       margin-bottom: 8px;
     }
@@ -635,21 +804,35 @@ function injectModalStyles() {
       max-height: 60px; overflow-y: auto; margin-bottom: 12px;
       font-family: 'SF Mono', Monaco, monospace;
     }
-    .push115-modal-select {
-      flex: 1 1 auto;
-      min-width: 0;
-      padding: 8px 10px;
-      border: 1px solid rgba(0,0,0,0.12);
-      border-radius: 8px;
-      font-size: 13px;
-      color: #1d1d1f;
-      background: #fff;
-      outline: none;
-    }
-    .push115-modal-select:focus {
-      border-color: #007AFF;
-      box-shadow: 0 0 0 3px rgba(0,122,255,0.12);
-    }
+	    .push115-modal-select {
+	      position: absolute;
+	      inset: 0;
+	      width: 100%;
+	      height: 100%;
+	      opacity: 0;
+	      cursor: pointer;
+	    }
+	    .push115-path-select-wrapper {
+	      position: relative;
+	      min-height: 36px;
+	      border: 1px solid rgba(0,0,0,0.12);
+	      border-radius: 8px;
+	      background: #fff;
+	    }
+	    .push115-path-select-wrapper::before {
+	      content: attr(data-selected-label);
+	      display: block;
+	      min-height: 18px;
+	      padding: 8px 30px 8px 10px;
+	      font-size: 13px;
+	      line-height: 1.35;
+	      color: #1d1d1f;
+	      overflow-wrap: anywhere;
+	    }
+	    .push115-path-select-wrapper:focus-within {
+	      border-color: #007AFF;
+	      box-shadow: 0 0 0 3px rgba(0,122,255,0.12);
+	    }
     .push115-modal-footer {
       padding: 14px 20px; display: flex; gap: 10px;
       justify-content: flex-end; background: #fafafa;
@@ -695,6 +878,7 @@ function injectModalStyles() {
       to { transform: rotate(360deg); }
     }
   `
+	injectedStylesText = style.textContent
 	document.head.appendChild(style)
 }
 
@@ -736,17 +920,26 @@ function hideStickyToast() {
 	}
 }
 
-function createConfirmModal(url, type) {
-	const existing = document.getElementById('push115-modal-overlay')
-	if (existing) existing.remove()
+let activeModalHost = null
+
+function createConfirmModal(rawLinks, type) {
+	const links = Array.isArray(rawLinks) ? rawLinks : [rawLinks]
+	if (links.length === 0) return
+	if (activeModalHost) activeModalHost.remove()
 
 	const currentCid = Push115PathUtils.normalizeCid(getConfig(CONFIG_KEYS.SAVE_PATH_CID)) || '0'
 	const options = getSavePathOptions()
 	const hasCurrent = options.some(item => item.cid === currentCid)
 	const allOptions = hasCurrent ? options : [...options, { name: '', cid: currentCid }]
+	const host = document.createElement('div')
+	host.setAttribute('data-push115-modal-host', '')
+	host.style.cssText = 'all: initial; position: relative; z-index: 2147483647;'
+	const shadow = host.attachShadow({ mode: 'closed' })
+	const shadowStyle = document.createElement('style')
+	shadowStyle.textContent = injectedStylesText
+	shadow.appendChild(shadowStyle)
 	const overlay = document.createElement('div')
 	overlay.className = 'push115-modal-overlay'
-	overlay.id = 'push115-modal-overlay'
 
 	const modal = document.createElement('div')
 	modal.className = 'push115-modal'
@@ -768,14 +961,14 @@ function createConfirmModal(url, type) {
 	info1.className = 'push115-modal-info'
 	info1.textContent = `${t('modal_detect')} `
 	const strong = document.createElement('strong')
-	strong.textContent = type
+	strong.textContent = `${links.length} ${type}`
 	info1.appendChild(strong)
 	info1.appendChild(document.createTextNode(` ${t('modal_link_type')}`))
 	body.appendChild(info1)
 
 	const linkDiv = document.createElement('div')
 	linkDiv.className = 'push115-modal-link'
-	linkDiv.textContent = url
+	linkDiv.textContent = links.join('\n')
 	body.appendChild(linkDiv)
 
 	const pathRow = document.createElement('div')
@@ -790,11 +983,22 @@ function createConfirmModal(url, type) {
 	allOptions.forEach(item => {
 		const opt = document.createElement('option')
 		opt.value = item.cid
-		opt.textContent = Push115PathUtils.formatPathLabel(item, getRootLabel())
+		const label = Push115PathUtils.formatPathLabel(item, getRootLabel())
+		opt.textContent = label
+		opt.title = label
 		if (item.cid === currentCid) opt.selected = true
 		select.appendChild(opt)
 	})
-	pathRow.appendChild(select)
+	const selectWrapper = document.createElement('div')
+	selectWrapper.className = 'push115-path-select-wrapper'
+	selectWrapper.appendChild(select)
+	pathRow.appendChild(selectWrapper)
+	const updateSelectedPath = () => {
+		selectWrapper.dataset.selectedLabel = select.selectedOptions[0]?.textContent || ''
+		select.title = selectWrapper.dataset.selectedLabel
+	}
+	select.addEventListener('change', updateSelectedPath)
+	updateSelectedPath()
 	body.appendChild(pathRow)
 
 	const hintDiv = document.createElement('div')
@@ -808,26 +1012,37 @@ function createConfirmModal(url, type) {
 	footer.className = 'push115-modal-footer'
 	const cancelBtn = document.createElement('button')
 	cancelBtn.className = 'push115-modal-btn push115-modal-btn-cancel'
-	cancelBtn.id = 'push115-modal-cancel'
 	cancelBtn.textContent = t('modal_cancel')
 	footer.appendChild(cancelBtn)
 	const confirmBtn = document.createElement('button')
 	confirmBtn.className = 'push115-modal-btn push115-modal-btn-confirm'
-	confirmBtn.id = 'push115-modal-confirm'
 	confirmBtn.textContent = t('modal_confirm')
 	footer.appendChild(confirmBtn)
 	modal.appendChild(footer)
 
 	overlay.appendChild(modal)
+	shadow.appendChild(overlay)
+	document.body.appendChild(host)
+	activeModalHost = host
 
-	document.body.appendChild(overlay)
-
-	document.getElementById('push115-modal-cancel').addEventListener('click', () => overlay.remove())
-	overlay.addEventListener('click', e => {
-		if (e.target === overlay) overlay.remove()
+	const closeModal = () => {
+		host.remove()
+		if (activeModalHost === host) activeModalHost = null
+	}
+	cancelBtn.addEventListener('click', e => {
+		if (e.isTrusted) closeModal()
 	})
-	document.getElementById('push115-modal-confirm').addEventListener('click', async () => {
-		const btn = document.getElementById('push115-modal-confirm')
+	overlay.addEventListener('click', e => {
+		if (e.isTrusted && e.target === overlay) closeModal()
+	})
+	confirmBtn.addEventListener('click', async e => {
+		if (!hasTrustedUserGesture(e)) return
+		if (!getConfig(CONFIG_KEYS.AUTO_DETECT)) {
+			closeModal()
+			showToast('error', '自动识别已关闭，本次操作已取消')
+			return
+		}
+		const btn = confirmBtn
 		btn.disabled = true
 		btn.textContent = t('pushing')
 
@@ -847,28 +1062,33 @@ function createConfirmModal(url, type) {
 			const sign = tokenRes.data?.sign
 			const time = tokenRes.data?.time
 
-			const savePathCid =
-				Push115PathUtils.normalizeCid(document.getElementById('push115-modal-save-dir')?.value) || currentCid || '0'
+			const savePathCid = Push115PathUtils.normalizeCid(select.value) || currentCid || '0'
 
-			const res = await sendMessage('API_REQUEST', {
-				url: 'https://115.com/web/lixian/?ct=lixian&ac=add_task_url',
-				method: 'POST',
-				data: { url, uid, sign, time, wp_path_id: savePathCid, savepath: '' },
-				// Let fetch handle Content-Type for URLSearchParams
-			})
+			const data = { uid, sign, time, wp_path_id: savePathCid, savepath: '' }
+			let endpoint = 'https://115.com/web/lixian/?ct=lixian&ac=add_task_url'
+			if (links.length === 1) {
+				data.url = links[0]
+			} else {
+				endpoint = 'https://115.com/web/lixian/?ct=lixian&ac=add_task_urls'
+				data.union = '0'
+				links.forEach((link, index) => { data[`url[${index}]`] = link })
+			}
+			const res = await sendMessage('API_REQUEST', { url: endpoint, method: 'POST', data })
 
 			if (res.data && res.data.state) {
-				overlay.remove()
-				showToast('success', t('push_success'))
+				closeModal()
+				showToast('success', links.length > 1 ? ` ${links.length} 个任务推送成功！` : t('push_success'))
 
 				// Start monitoring and organizing if feature is enabled
 				const autoOrganize = getConfig(CONFIG_KEYS.AUTO_ORGANIZE)
 				const autoDelete = getConfig(CONFIG_KEYS.AUTO_DELETE_SMALL)
+				const autoCleanNames = getConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES)
+				const autoDeleteEmptyFolders = getConfig(CONFIG_KEYS.AUTO_DELETE_EMPTY_FOLDERS)
 
-				if (autoOrganize || autoDelete) {
+				if (links.length === 1 && (autoOrganize || autoDelete || autoCleanNames || autoDeleteEmptyFolders)) {
 					monitorTaskAndOrganize(
 						{
-							id: res.data.info_hash || res.data.name || url,
+							id: res.data.info_hash || res.data.name || links[0],
 							name: res.data.name || '',
 						},
 						savePathCid,
@@ -888,7 +1108,7 @@ function createConfirmModal(url, type) {
 
 async function init() {
 	// Load config
-	const items = await chrome.storage.local.get(null)
+	const items = await chrome.storage.local.get(Object.values(CONFIG_KEYS))
 	configCache = { ...DEFAULT_CONFIG, ...items }
 
 	// Inject styles for modals
@@ -896,25 +1116,26 @@ async function init() {
 
 	// Link click listener
 	document.addEventListener('click', e => {
+		if (!hasTrustedUserGesture(e) || !getConfig(CONFIG_KEYS.AUTO_DETECT)) return
 		const link = e.target.closest('a')
 		if (!link) return
 
 		const href = link.href
 		if (href && href.startsWith('magnet:')) {
 			e.preventDefault()
-			createConfirmModal(href, 'Magnet')
+			createConfirmModal([href], 'Magnet')
 		} else if (href && href.startsWith('ed2k://')) {
 			e.preventDefault()
-			createConfirmModal(href, 'ED2K')
+			createConfirmModal([href], 'ED2K')
 		}
 	})
 
 	// Copy event listener - detect magnet/ed2k links from the current selection
-	document.addEventListener('copy', () => {
-		if (!getConfig(CONFIG_KEYS.AUTO_DETECT)) return
+	document.addEventListener('copy', event => {
+		if (!event.isTrusted || !getConfig(CONFIG_KEYS.AUTO_DETECT)) return
 
-		const link = detectOfflineLink(getSelectedText())
-		if (link) createConfirmModal(link.url, link.type)
+		const links = Push115OfflineUtils.extractOfflineLinks(getSelectedText())
+		if (links.length > 0) createConfirmModal(links, 'Magnet/ED2K')
 	})
 
 	// Listen for config changes

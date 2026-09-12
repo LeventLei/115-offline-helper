@@ -1,20 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "115 Offline Helper",
-  "version": "1.0.0",
-  "description": "Automatically detect magnet/ed2k links and push to 115.com offline download.",
+  "name": "Levent 115 离线助手",
+  "version": "1.1.3",
+  "author": "LeventLei",
+  "description": "批量识别 magnet/ed2k 链接并安全推送到 115，支持目录选择和广告词清理。",
   "permissions": [
     "storage",
     "cookies",
-    "notifications",
-    "activeTab",
-    "scripting"
+    "scripting",
+    "alarms"
   ],
   "host_permissions": [
-    "*://*.115.com/*"
+    "https://*.115.com/*",
+    "https://115.com/*"
   ],
   "optional_host_permissions": [
-    "<all_urls>"
+    "http://*/*",
+    "https://*/*"
   ],
   "action": {
     "default_title": "115 Offline Helper",

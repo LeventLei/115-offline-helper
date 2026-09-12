@@ -8,13 +8,13 @@
 </h1>
 
 <p align="center">
-  <strong>自动检测 magnet/ed2k 链接，一键推送到 115 网盘离线下载。</strong>
+  <strong>批量识别 magnet/ed2k 链接，安全推送到 115，并清理文件名广告词。</strong>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/manifest-v3-blue" alt="Manifest V3">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/version-1.0.0-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.1.3-orange" alt="Version">
 </p>
 
 ---
@@ -22,32 +22,27 @@
 ## ✨ 功能特性
 
 - 🔍 **自动检测链接** — 自动检测任意网页上的 magnet 和 ed2k 链接（可选开启）
-- 📋 **剪贴板支持** — 在弹出窗口直接粘贴链接推送
+- 📋 **批量粘贴** — 支持空格、换行混排，一次识别并去重多个 magnet/ed2k 链接
 - 📥 **一键推送** — 即时推送链接到 115 网盘离线下载队列
 - 📁 **自定义保存路径** — 选择离线下载的保存目录
 - 🗑️ **自动删除小文件** — 自动删除低于指定大小的文件（如广告文件）
 - 📂 **自动整理视频** — 自动将视频文件按名称归类到文件夹
+- 🧹 **广告词清理** — 配置过滤词后，批量清理指定目录内的文件和文件夹名称
 - 📱 **扫码登录** — 在扩展弹窗中直接扫码登录 115 账号
 - 🌐 **中英双语** — 界面支持中文和英文
 
 ## 📦 安装方法
 
-### Chrome 应用商店（推荐）
-
-直接从 Chrome 应用商店安装：
-
-[<img src="https://fonts.gstatic.com/s/i/productlogos/chrome_store/v7/192px.svg" height="58" alt="前往 Chrome 应用商店">](https://chromewebstore.google.com/detail/115-offline-helper/blgnjjjbmjgilkiimglodjdebcdaidgl?hl=zh-CN&authuser=0)
-
-### 手动安装
+### 安装专属版本
 
 1. **下载扩展**
 
-   前往 [Releases](https://github.com/gangz1o/115-offline-helper/releases/latest) 页面，下载 `115-offline-helper_v*.zip` 并解压。
+   前往 [Releases](https://github.com/LeventLei/115-offline-helper/releases/latest) 页面，下载 `levent-115-offline-helper_v*.zip` 并解压。
 
    或通过 Git 克隆仓库：
 
    ```bash
-   git clone https://github.com/gangz1o/115-offline-helper.git
+   git clone https://github.com/LeventLei/115-offline-helper.git
    ```
 
 2. **打开扩展管理页面**
@@ -78,7 +73,7 @@
 1. **登录** — 点击扩展图标 → **扫码登录** → 用 115 手机客户端扫描二维码。❗️❗️❗️强烈建议使用非常用客户端（如小程序端），这样不会将常用客户端挤掉线
 2. **设置保存目录** — 在主页下拉框中选择，或在设置页添加自定义路径（格式：`文件夹名:CID`）。
 3. **推送链接** — 两种方式：
-   - **弹窗推送**：在输入框中粘贴 magnet/ed2k 链接，点击 **推送**。
+   - **弹窗推送**：在输入框中粘贴一个或多个 magnet/ed2k 链接，点击 **识别并推送**。
    - **自动检测**：在设置中开启"自动检测链接"，浏览任意网页时自动检测并弹出一键推送确认框。
 
 ### 设置项
@@ -89,6 +84,9 @@
 | 自动检测链接 | 通过内容脚本在所有页面检测链接 |
 | 自动删除小文件 | 删除小于指定 MB 的文件 |
 | 自动整理视频文件 | 将视频文件按文件名归类到文件夹 |
+| 文件名广告过滤词 | 每行一个；支持 Markdown 链接写法和反斜杠转义，包含任务最顶层文件夹名 |
+| 自动清理文件名广告词 | 勾选后随推送流程执行；仅在确认新任务目录后递归清理，禁止从根目录执行 |
+| 自动删除空文件夹 | 勾选后在小文件删除、广告词清理和视频整理完成后，删除任务目录内的空子文件夹 |
 
 ## ❓ 常见问题
 
@@ -103,10 +101,11 @@
 
 ## 🔒 隐私
 
-- 所有数据通过 `chrome.storage.local` 保存在本地
+- 仅偏好设置通过 `chrome.storage.local` 保存在本地；认证 Cookie 不复制到扩展存储
 - 不收集、传输或共享任何用户数据
 - 仅与 `*.115.com` 域名通信
-- [完整隐私政策](https://gangz1o.github.io/115-offline-helper/privacy-policy.html)
+- 后台请求使用 HTTPS 主机、路径和方法白名单
+- [完整隐私政策](privacy-policy.html)
 
 ## 📄 License
 
