@@ -14,7 +14,6 @@ html {
 body {
   width: 440px;
   height: 600px;
-  max-height: 100vh;
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
   background: #fff;
