@@ -9,6 +9,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # PR 检查真实作者提交；GitHub 的临时合并对象使用平台生成的身份。
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - name: 检查提交历史中的隐私信息
         run: python3 scripts/check-privacy.py --history
