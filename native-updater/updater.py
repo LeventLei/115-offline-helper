@@ -11,6 +11,7 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import shlex
 import stat
 import struct
 import subprocess
@@ -88,6 +89,29 @@ def extension_id_for(folder, manifest):
         raise UpdateError('IDENTITY_CHANGED', '扩展公钥格式无效') from None
 
 
+def permission_error():
+    return UpdateError('PERMISSION_DENIED', 'macOS拒绝访问助手或扩展文件。请查看安装说明中的文件访问权限排查；无需重复安装或卸载扩展。')
+
+
+def normalize_target(raw):
+    raw = raw.strip()
+    # input()不会像shell一样解析Finder拖入的引号和反斜杠。
+    if raw.startswith(("'", '"')) or '\\' in raw:
+        try:
+            parts = shlex.split(raw)
+        except ValueError:
+            raise UpdateError('INVALID_TARGET', '目录引号或转义格式无效') from None
+        if len(parts) != 1:
+            raise UpdateError('INVALID_TARGET', '请输入一个扩展目录')
+        raw = parts[0]
+    if raw.startswith('~/资源库/'):
+        raw = '~/Library/' + raw[len('~/资源库/'):]
+    localized = str(Path.home() / '资源库') + '/'
+    if raw.startswith(localized):
+        raw = str(Path.home() / 'Library') + '/' + raw[len(localized):]
+    return Path(raw).expanduser().resolve()
+
+
 def read_manifest(folder):
     try:
         manifest = json.loads((folder / 'manifest.json').read_text())
@@ -95,6 +119,8 @@ def read_manifest(folder):
             raise ValueError()
         version(manifest['version'])
         return manifest
+    except PermissionError:
+        raise permission_error() from None
     except Exception:
         raise UpdateError('INVALID_TARGET', '目录不是有效的115助手扩展') from None
 
@@ -215,6 +241,12 @@ class Updater:
                 current = read_manifest(self.target)
                 if extension_id_for(self.target, current) != self.extension_id:
                     raise ValueError()
+        except PermissionError:
+            raise permission_error() from None
+        except UpdateError as error:
+            if error.code == 'PERMISSION_DENIED':
+                raise
+            raise UpdateError('NOT_CONFIGURED', '助手尚未安装或登记目录无效') from None
         except Exception:
             raise UpdateError('NOT_CONFIGURED', '助手尚未安装或登记目录无效') from None
 
@@ -386,7 +418,7 @@ def install_host(target, extension_id):
         raise UpdateError('UNSUPPORTED', '当前助手安装器仅支持macOS Chrome')
     if not re.fullmatch(r'[a-p]{32}', extension_id):
         raise UpdateError('INVALID_ID', '扩展ID应为32位小写字母a到p')
-    target = Path(target).expanduser().resolve()
+    target = normalize_target(target)
     current = read_manifest(target)
     if extension_id_for(target, current) != extension_id:
         raise UpdateError('INVALID_ID_PATH', '扩展ID与目录不匹配，请输入Chrome详情页的实际加载目录')
@@ -407,7 +439,6 @@ def install_host(target, extension_id):
     program = SUPPORT / 'updater.py'
     if Path(__file__).resolve() != program.resolve():
         shutil.copy2(__file__, program)
-    import shlex
     launcher = SUPPORT / 'native-host.command'
     launcher.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' ' + shlex.quote(str(program)) + ' --native "$@"\n')
     launcher.chmod(0o700)
@@ -435,7 +466,7 @@ def main():
         return
     try:
         if args.install:
-            directory = args.extension_dir or input('原扩展目录（包含manifest.json，可将目录拖入终端）：').strip().strip("'\"")
+            directory = args.extension_dir or input('原扩展目录（包含manifest.json，可将目录拖入终端）：')
             extension_id = args.extension_id or input('扩展详情页的32位ID：').strip()
             install_host(directory, extension_id)
         elif args.restore:
@@ -443,6 +474,9 @@ def main():
             print('已恢复上一版，请在Chrome扩展管理页重新加载插件。')
         else:
             parser.print_help()
+    except PermissionError:
+        print(str(permission_error()), file=sys.stderr)
+        sys.exit(1)
     except UpdateError as error:
         print(str(error), file=sys.stderr)
         sys.exit(1)
