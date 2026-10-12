@@ -390,22 +390,6 @@ function bindEvents() {
 	})
 }
 
-async function getOfflineAuthContext() {
-	const userRes = await sendMessage('API_REQUEST', {
-		url: 'https://my.115.com/?ct=ajax&ac=nav',
-		method: 'GET',
-	})
-	const tokenRes = await sendMessage('API_REQUEST', {
-		url: 'https://115.com/?ct=offline&ac=space',
-		method: 'GET',
-	})
-	const uid = userRes.data?.data?.user_id
-	const sign = tokenRes.data?.sign
-	const time = tokenRes.data?.time
-	if (!uid || !sign || !time) throw new Error(t('login_fail'))
-	return { uid, sign, time }
-}
-
 async function pushBatchLinks() {
 	const input = document.getElementById('push115-links-input')
 	const button = document.getElementById('push115-batch-push')
@@ -419,37 +403,15 @@ async function pushBatchLinks() {
 	button.disabled = true
 	button.textContent = `${t('processing')} 0/${links.length}`
 	try {
-		const { uid, sign, time } = await getOfflineAuthContext()
-		const cid = Push115PathUtils.normalizeCid(getConfig(CONFIG_KEYS.SAVE_PATH_CID)) || '0'
-		const autoCleanNames = getConfig(CONFIG_KEYS.AUTO_CLEAN_NAMES)
-		const autoDeleteEmptyFolders = getConfig(CONFIG_KEYS.AUTO_DELETE_EMPTY_FOLDERS)
-		const filterTerms = Push115OfflineUtils.normalizeFilterTerms(getConfig(CONFIG_KEYS.NAME_FILTER_LIST))
+		const warnings = []
 		for (let index = 0; index < links.length; index++) {
 			button.textContent = `${t('processing')} ${index + 1}/${links.length}`
-			const response = await sendMessage('API_REQUEST', {
-				url: 'https://115.com/web/lixian/?ct=lixian&ac=add_task_url',
-				method: 'POST',
-				data: { url: links[index], uid, sign, time, wp_path_id: cid, savepath: '' },
-			})
-			if (!(response.data?.state === true || response.data?.state === 1)) {
-				throw new Error(response.data?.error_msg || `第 ${index + 1} 个链接未被 115 接受`)
-			}
-			if ((autoCleanNames && filterTerms.length > 0) || autoDeleteEmptyFolders) {
-				const taskMeta = {
-					id: response.data.info_hash || response.data.name || links[index],
-					name: response.data.name || '',
-				}
-				await sendMessage('START_TASK_MONITOR', {
-					taskMeta,
-					savePathCid: cid,
-					filterTerms,
-					deleteEmptyFolders: autoDeleteEmptyFolders,
-				})
-			}
+			const submitted = await sendMessage('SUBMIT_OFFLINE_TASK', { link: links[index] })
+			if (submitted.data?.warning) warnings.push(submitted.data.warning)
 		}
 		input.value = links.join('\n')
 		const limitHint = detectedLinks.length > links.length ? '（已按 50 条安全上限提交）' : ''
-		showStatus('success', t('batch_success').replace('{count}', String(links.length)) + limitHint, 5000)
+		showStatus('success', t('batch_success').replace('{count}', String(links.length)) + limitHint + (warnings.length ? `；${warnings[0]}` : ''), 5000)
 	} catch (error) {
 		showStatus('error', error.message, 6000)
 	} finally {

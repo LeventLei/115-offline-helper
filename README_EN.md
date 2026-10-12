@@ -14,7 +14,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/manifest-v3-blue" alt="Manifest V3">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/version-1.1.3-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.2.0-orange" alt="Version">
 </p>
 
 ---
@@ -114,3 +114,7 @@ Install directly from the Chrome Web Store:
 ## 📄 License
 
 [MIT License](LICENSE)
+
+## TorBox integration (1.2.0)
+
+Disable the previous TorBox userscript, update this extension, and refresh the dashboard. Set the destination and log in through the extension popup. The task link icon copies the native short magnet and submits it immediately, independently of global auto-detection. Mobile displays a copy-and-submit label. Success means 115 accepted the task, not that downloading finished. Duplicate submissions to the same directory are suppressed for 60 seconds; failures may be retried manually. No clipboard reading permission is added. Only the two TorBox origins gain required page access; authentication stays in the service worker. Existing popup post-processing behavior is preserved.

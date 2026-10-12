@@ -1,6 +1,6 @@
 // Background Service Worker
 
-importScripts('offline-utils.js', 'security-utils.js')
+importScripts('offline-utils.js', 'security-utils.js', 'submit-utils.js')
 
 const STORAGE_KEYS = {
   AUTO_DETECT: 'push115_auto_detect',
@@ -106,6 +106,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return false;
   }
 
+  if (request.action === 'SUBMIT_OFFLINE_TASK') {
+    if (!isExtensionPageSender(sender) && !Push115SubmitUtils.isTorBoxSender(sender)) {
+      sendResponse({ success: false, error: '拒绝非 TorBox 顶层页面来源' });
+      return false;
+    }
+    submitOfflineTask(request.details, !isExtensionPageSender(sender))
+      .then(data => sendResponse({ success: true, data }))
+      .catch(error => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
   if (request.action === 'API_REQUEST') {
     handleApiRequest(request, sendResponse);
     return true; // Keep the message channel open for async response
@@ -196,7 +207,7 @@ async function persistAuthCookieToJar(rawCookie) {
   return cookieString;
 }
 
-async function fetch115Json(url, method = 'GET', data = null) {
+async function fetch115Json(url, method = 'GET', data = null, allowMissingState = false) {
   const normalizedMethod = String(method || 'GET').toUpperCase();
   if (!Push115SecurityUtils.isAllowedApiRequest(url, normalizedMethod)) {
     throw new Error('请求被安全策略拦截');
@@ -216,7 +227,7 @@ async function fetch115Json(url, method = 'GET', data = null) {
   } catch (_) {
     throw new Error('115 接口返回了无法解析的响应');
   }
-  if (!response.ok || !(result?.state === true || result?.state === 1)) {
+  if (!response.ok || !(result?.state === true || result?.state === 1 || (allowMissingState && result && typeof result === 'object' && result.state === undefined))) {
     throw new Error(result?.error_msg || result?.error || `115 接口请求失败 (${response.status})`);
   }
   return result;
@@ -526,4 +537,59 @@ async function handleApiRequest(request, sendResponse) {
       error: error.message
     });
   }
+}
+
+
+// 统一提交入口：目录和后处理配置只从扩展存储读取。
+const submissionInflight = new Map();
+let submissionCacheQueue = Promise.resolve();
+async function submitOfflineTask(details = {}, magnetOnly = false) {
+  const normalized = Push115SubmitUtils.normalizeLink(details?.link, magnetOnly);
+  const config = await chrome.storage.local.get([
+    'push115_save_path_cid', 'push115_auto_clean_names',
+    'push115_name_filter_list', 'push115_auto_delete_empty_folders',
+  ]);
+  const cid = normalizeMonitorCid(config.push115_save_path_cid ?? '0', true);
+  if (!cid) throw new Error('保存目录无效，请在扩展中重新选择');
+  const key = `${cid}:${normalized.key}`;
+  if (submissionInflight.has(key)) return submissionInflight.get(key);
+  const job = (async () => {
+    const stored = await chrome.storage.session.get('push115_submission_cache');
+    const cached = stored.push115_submission_cache?.[key];
+    if (cached && Date.now() - cached.time < 60000) return { accepted: true, duplicate: true, cid };
+    let user, token;
+    try {
+      user = await fetch115Json('https://my.115.com/?ct=ajax&ac=nav');
+      token = await fetch115Json('https://115.com/?ct=offline&ac=space', 'GET', null, true);
+    } catch (_) { throw new Error('115 登录检查失败，请打开扩展检查登录状态'); }
+    const uid = user.data?.user_id;
+    if (!uid || !token.sign || !token.time) throw new Error('115 未登录，请打开扩展扫码登录');
+    const result = await fetch115Json('https://115.com/web/lixian/?ct=lixian&ac=add_task_url', 'POST', {
+      url: normalized.link, uid, sign: token.sign, time: token.time, wp_path_id: cid, savepath: '',
+    });
+    // 缓存写入串行合并，避免不同任务并发时覆盖。
+    const persist = submissionCacheQueue.catch(() => {}).then(async () => {
+      const state = await chrome.storage.session.get('push115_submission_cache');
+      const cache = state.push115_submission_cache || {};
+      for (const id of Object.keys(cache)) if (Date.now() - cache[id].time >= 60000) delete cache[id];
+      cache[key] = { time: Date.now() };
+      await chrome.storage.session.set({ push115_submission_cache: cache });
+    });
+    submissionCacheQueue = persist;
+    let warning = '';
+    try { await persist } catch (_) { warning = '已提交，但重复提交保护未保存'; }
+    const filterTerms = config.push115_auto_clean_names
+      ? Push115OfflineUtils.normalizeFilterTerms(config.push115_name_filter_list) : [];
+    if (filterTerms.length || config.push115_auto_delete_empty_folders) {
+      try {
+        await startTaskMonitor({
+          taskMeta: { id: result.info_hash || normalized.key.replace(/^urn:btih:/, ''), name: result.name || '' },
+          savePathCid: cid, filterTerms, deleteEmptyFolders: config.push115_auto_delete_empty_folders === true,
+        });
+      } catch (_) { warning = '已提交，但自动清理监控启动失败'; }
+    }
+    return { accepted: true, duplicate: false, cid, warning };
+  })();
+  submissionInflight.set(key, job);
+  try { return await job } finally { submissionInflight.delete(key); }
 }

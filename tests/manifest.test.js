@@ -9,12 +9,19 @@ const manifest = JSON.parse(
 
 test('专属版本包含批量处理工具且不声明远程代码', () => {
 	assert.equal(manifest.name, 'Levent 115 离线助手')
-	assert.equal(manifest.version, '1.1.3')
+	assert.equal(manifest.version, '1.2.0')
 	assert.ok(manifest.permissions.includes('alarms'))
 	assert.ok(!manifest.content_security_policy?.extension_pages?.includes('unsafe-eval'))
 })
 
-test('主机权限仅限 115 官方域名，所有网页访问保持可选', () => {
-	assert.deepEqual(manifest.host_permissions, ['https://*.115.com/*', 'https://115.com/*'])
+test('主机权限仅限 115 与 TorBox，其他网页访问保持可选', () => {
+	assert.deepEqual(manifest.host_permissions, ['https://*.115.com/*', 'https://115.com/*', 'https://torbox.app/*', 'https://www.torbox.app/*'])
 	assert.deepEqual(manifest.optional_host_permissions, ['http://*/*', 'https://*/*'])
+})
+
+test('TorBox 定向注入隔离脚本和 MAIN 桥，不要求剪贴板读取', () => {
+ assert.equal(manifest.content_scripts.length, 2)
+ assert.equal(manifest.content_scripts[0].world, 'MAIN')
+ assert.ok(manifest.content_scripts.every(item => !item.all_frames && item.matches.every(url => url.includes('torbox.app/'))))
+ assert.ok(!manifest.permissions.includes('clipboardRead'))
 })
