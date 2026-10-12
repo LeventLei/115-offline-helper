@@ -13,7 +13,8 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
       - name: 检查提交历史中的隐私信息
-        run: python3 scripts/check-privacy.py --history
+        # 完整检查被检出的提交及全部祖先，避免无关远端引用污染检查结果。
+        run: python3 scripts/check-privacy.py --history --ref HEAD
       - name: 检查当前文件中的隐私信息
         run: git ls-files -z | xargs -0 -I{} sh -c 'python3 scripts/check-privacy.py --stdin < "$1"' sh '{}'
       - name: Gitleaks 凭据扫描（隐藏敏感值）

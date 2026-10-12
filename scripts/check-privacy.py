@@ -41,12 +41,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--history", action="store_true")
     parser.add_argument("--stdin", action="store_true")
+    parser.add_argument("--ref", help="仅扫描指定提交及其全部祖先；默认扫描全部引用")
     args = parser.parse_args()
     errors = []
     if args.stdin:
         errors.extend(check_content(sys.stdin.buffer.read(), "stdin"))
     elif args.history:
-        commits = git("rev-list", "--all").decode().splitlines()
+        commits = git("rev-list", args.ref or "--all").decode().splitlines()
         seen = set()
         for commit in commits:
             author, email, committer, cemail = git("show", "-s", "--format=%an%n%ae%n%cn%n%ce", commit).decode().splitlines()
