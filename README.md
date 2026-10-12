@@ -14,7 +14,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/manifest-v3-blue" alt="Manifest V3">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/version-1.1.3-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.2.0-orange" alt="Version">
 </p>
 
 ---
@@ -67,6 +67,19 @@
 > **💡 提示：** 更新时运行 `git pull` 拉取最新代码，然后在扩展管理页面点击 ↻ 刷新按钮即可。
 
 > **💡 兼容性：** 本扩展基于 Manifest V3，支持所有 Chromium 内核浏览器（Chrome、Edge、Brave、Arc 等）。
+
+## TorBox 一键复制并离线（1.2.0）
+
+1. 更新扩展后，停用原「TorBox 一键复制短磁力」油猴脚本，刷新 TorBox Dashboard。
+2. 在 115 助手弹窗选择保存目录并确认已登录；无需开启全站自动检测。
+3. 点击任务操作栏的链接图标（手机显示「复制并离线」）。复制成功后自动提交，页面提示「已提交到115」。
+
+- 成功表示 115 已接受任务，不代表下载完成。
+- 同一磁力、同一目录成功提交后 60 秒内去重；失败允许手动重试。
+- 复制失败、未登录、需要验证时显示错误，不自动重试。
+- 不读取或轮询系统剪贴板；认证信息仅由后台处理。
+- 后处理与原弹窗提交一致：按已有设置启动名称清理和空文件夹清理监控；本次没有扩展小文件删除或视频整理功能。
+- 更新增加 TorBox 两个精确域名的页面访问权限，用于定向按钮与复制桥；其他站点访问仍为可选。
 
 ## 🚀 使用说明
 
