@@ -14,7 +14,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/manifest-v3-blue" alt="Manifest V3">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/version-1.2.0-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.2.1-orange" alt="Version">
 </p>
 
 ---
@@ -67,6 +67,12 @@
 > **💡 提示：** 更新时运行 `git pull` 拉取最新代码，然后在扩展管理页面点击 ↻ 刷新按钮即可。
 
 > **💡 兼容性：** 本扩展基于 Manifest V3，支持所有 Chromium 内核浏览器（Chrome、Edge、Brave、Arc 等）。
+
+## 登录持久化（1.2.1）
+
+更新后需重新扫码一次，新的认证 Cookie 才会采用最多 30 天的本机保存期限。正常退出、重启 Chrome 后不会因本机会话结束自动丢失；同值 Cookie 已有更短期限时保留原期限。
+
+这不延长 115 服务器端授权有效期，同端登录互踢、服务器撤销或浏览器清理 Cookie 后仍需重新扫码。凭据仅保存在浏览器 Cookie 容器，不备份到扩展存储。认证字段缺失或任何 Cookie 写入失败时，不再误报登录成功。
 
 ## TorBox 一键复制并离线（1.2.0）
 

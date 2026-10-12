@@ -157,54 +157,54 @@ function isExtensionPageSender(sender) {
   return typeof sender?.url === 'string' && sender.url.startsWith(extensionRoot);
 }
 
-async function syncCookieStringToJar(cookieString, options = {}) {
-  const { overwrite = true } = options;
-  const safeCookieString = Push115SecurityUtils.parseAuthCookie(cookieString);
-  const pairs = safeCookieString
-    .split(';')
-    .map(item => item.trim())
-    .filter(Boolean);
+const AUTH_COOKIE_NAMES = ['UID', 'CID', 'SEID'];
+const AUTH_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+const LOGIN_COOKIE_MISSING = '登录响应缺少完整认证信息，请重新扫码';
+const LOGIN_COOKIE_WRITE_FAILED = '认证 Cookie 写入失败，请检查扩展权限后重新扫码';
+const LOGIN_FAILED = '登录失败，请重新扫码或检查扩展权限';
 
-  for (const pair of pairs) {
-    const idx = pair.indexOf('=');
-    if (idx <= 0) continue;
-    const name = pair.slice(0, idx).trim();
-    const value = pair.slice(idx + 1).trim();
-    if (!name || !value) continue;
-
+async function syncCookieStringToJar(cookieString) {
+  const pairs = Push115SecurityUtils.parseAuthCookie(cookieString)
+    .split(';').map(item => item.trim()).filter(Boolean)
+    .map(pair => {
+      const index = pair.indexOf('=');
+      return { name: pair.slice(0, index), value: pair.slice(index + 1) };
+    });
+  // 全部字段检查通过后才写入，避免不完整响应被误报为成功。
+  if (pairs.length !== AUTH_COOKIE_NAMES.length ||
+      !AUTH_COOKIE_NAMES.every(name => pairs.filter(pair => pair.name === name && pair.value).length === 1)) {
+    throw new Error(LOGIN_COOKIE_MISSING);
+  }
+  const now = Date.now() / 1000;
+  const maximumExpiry = now + AUTH_COOKIE_MAX_AGE_SECONDS;
+  for (const { name, value } of pairs) {
     try {
-      if (!overwrite) {
-        const existing = await chrome.cookies.get({
-          url: 'https://115.com/',
-          name,
-        });
-        if (existing && existing.value) {
-          continue;
-        }
-      }
-      await chrome.cookies.set({
-        url: 'https://115.com/',
-        name,
-        value,
-        domain: '.115.com',
-        path: '/',
-        secure: true,
-        httpOnly: true,
-        sameSite: 'no_restriction',
+      const existing = await chrome.cookies.get({ url: 'https://115.com/', name });
+      // 同值、未过期的持久 Cookie 不延长原期限；新值不继承旧授权期限。
+      const preserveExpiry = existing?.value === value && existing.session !== true &&
+        Number.isFinite(existing.expirationDate) && existing.expirationDate > now;
+      const expirationDate = preserveExpiry
+        ? Math.min(existing.expirationDate, maximumExpiry) : maximumExpiry;
+      const written = await chrome.cookies.set({
+        url: 'https://115.com/', name, value, domain: '.115.com', path: '/',
+        secure: true, httpOnly: true, sameSite: 'no_restriction', expirationDate,
       });
-    } catch (e) {
-      console.warn('Set cookie failed:', name, e?.message || e);
+      if (!written || written.name !== name || written.value !== value || written.session === true ||
+          !Number.isFinite(written.expirationDate) || written.expirationDate <= now ||
+          written.expirationDate > expirationDate + 1) {
+        throw new Error(LOGIN_COOKIE_WRITE_FAILED);
+      }
+    } catch (_) {
+      // 不记录原始浏览器错误，防止错误文本带出凭据。
+      throw new Error(LOGIN_COOKIE_WRITE_FAILED);
     }
   }
+  return true;
 }
 
 async function persistAuthCookieToJar(rawCookie) {
-  const cookieString = Push115SecurityUtils.parseAuthCookie(rawCookie);
-  if (!cookieString) return '';
-
-  await syncCookieStringToJar(cookieString);
-
-  return cookieString;
+  await syncCookieStringToJar(rawCookie);
+  return true;
 }
 
 async function fetch115Json(url, method = 'GET', data = null, allowMissingState = false) {
@@ -467,9 +467,11 @@ async function handleTaskMonitorAlarm(monitorId) {
 
 // Handle generic API requests using fetch
 async function handleApiRequest(request, sendResponse) {
+  let isLoginRequest = false;
   try {
     const { url, method = 'GET', data = null, headers = {} } = request.details || {};
     const normalizedMethod = String(method || 'GET').toUpperCase();
+    isLoginRequest = new URL(url).hostname === 'passportapi.115.com';
     if (!Push115SecurityUtils.isAllowedApiRequest(url, normalizedMethod)) {
       throw new Error('请求被安全策略拦截：仅允许预定义的 115 官方接口');
     }
@@ -511,16 +513,11 @@ async function handleApiRequest(request, sendResponse) {
       // Not JSON
     }
 
-    // Persist cookie from qrcode login response for long-term usage
+    // 扫码登录必须完成三项 Cookie 写入，响应才可标记 cookie_saved。
     let responsePayload = responseJson;
-    if (
-      responseJson &&
-      responseJson.state === 1 &&
-      responseJson.data &&
-      responseJson.data.cookie &&
-      new URL(url).hostname === 'passportapi.115.com'
-    ) {
-      await persistAuthCookieToJar(responseJson.data.cookie);
+    if (isLoginRequest) {
+      if (!response.ok || responseJson?.state !== 1) throw new Error(LOGIN_FAILED);
+      await persistAuthCookieToJar(responseJson.data?.cookie);
       responsePayload = Push115SecurityUtils.redactLoginCookie(responseJson);
     }
 
@@ -531,10 +528,13 @@ async function handleApiRequest(request, sendResponse) {
       statusText: response.statusText
     });
   } catch (error) {
-    console.error('API Request Error:', error);
+    const safeLoginErrors = [LOGIN_COOKIE_MISSING, LOGIN_COOKIE_WRITE_FAILED, LOGIN_FAILED];
+    if (!isLoginRequest) console.error('API Request Error:', error);
     sendResponse({
       success: false,
-      error: error.message
+      error: isLoginRequest
+        ? (safeLoginErrors.includes(error.message) ? error.message : LOGIN_FAILED)
+        : error.message
     });
   }
 }

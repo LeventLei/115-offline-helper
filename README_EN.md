@@ -14,7 +14,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/manifest-v3-blue" alt="Manifest V3">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/version-1.2.0-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.2.1-orange" alt="Version">
 </p>
 
 ---
@@ -118,3 +118,7 @@ Install directly from the Chrome Web Store:
 ## TorBox integration (1.2.0)
 
 Disable the previous TorBox userscript, update this extension, and refresh the dashboard. Set the destination and log in through the extension popup. The task link icon copies the native short magnet and submits it immediately, independently of global auto-detection. Mobile displays a copy-and-submit label. Success means 115 accepted the task, not that downloading finished. Duplicate submissions to the same directory are suppressed for 60 seconds; failures may be retried manually. No clipboard reading permission is added. Only the two TorBox origins gain required page access; authentication stays in the service worker. Existing popup post-processing behavior is preserved.
+
+## Persistent login (1.2.1)
+
+Scan the login QR code once after upgrading. New authentication cookies are stored only in the browser cookie jar for at most 30 days; an earlier persistent expiry for the same value is retained. This prevents loss solely from ending the browser session, but does not extend 115 server-side authorization. Revocation, competing logins and cookie clearing may still require login. Incomplete credentials or failed cookie writes now produce a sanitized error instead of reporting login success. No credential backup, keep-alive timer or new permissions are added.

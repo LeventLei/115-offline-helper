@@ -103,7 +103,7 @@
         <ul>
             <li><strong>User preferences</strong> are stored locally until you uninstall the Extension or manually clear the Extension's data.</li>
             <li><strong>Clipboard and page content</strong> are processed in real-time memory only and are never stored persistently. They are discarded immediately after link detection.</li>
-            <li><strong>Authentication cookies</strong> remain in Chrome's Cookie jar as browser-session cookies. The Extension keeps no secondary credential backup.</li>
+            <li><strong>Authentication cookies</strong> remain in Chrome's Cookie jar as persistent cookies for at most 30 days from QR login; an earlier existing expiry for the same cookie value is preserved. This local retention does not extend 115 server-side authorization. The Extension keeps no secondary credential backup.</li>
         </ul>
         <p>Uninstalling the Extension removes all locally stored data.</p>
 
@@ -231,7 +231,7 @@
         <ul>
             <li><strong>用户偏好设置</strong> — 在本地存储直到您卸载扩展或手动清除扩展数据。</li>
             <li><strong>剪贴板和页面内容</strong> — 仅在实时内存中处理，从不持久化存储。链接检测完成后立即丢弃。</li>
-            <li><strong>认证 Cookie</strong> — 作为浏览器会话 Cookie 保留在 Chrome Cookie 容器中；扩展没有第二份凭据备份。</li>
+            <li><strong>认证 Cookie</strong> — 扫码登录后作为持久 Cookie 保留在 Chrome Cookie 容器中，本机最多保存 30 天；同值 Cookie 已有更早到期时间时保留原期限。本机保存期限不延长 115 服务器端的授权有效期；扩展没有第二份凭据备份。</li>
         </ul>
         <p>卸载本扩展将删除所有本地存储的数据。</p>
 

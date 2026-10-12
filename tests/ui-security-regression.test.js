@@ -53,7 +53,9 @@ test('后台不再暴露 Cookie 读取消息或把认证信息写入扩展存储
 	const source = read('background.js')
 
 	assert.doesNotMatch(source, /GET_COOKIE|SET_COOKIE|push115_cookie/)
-	assert.doesNotMatch(source, /expirationDate/)
+	assert.match(source, /AUTH_COOKIE_MAX_AGE_SECONDS = 30 \* 24 \* 60 \* 60/)
+	assert.match(source, /expirationDate/)
+	assert.doesNotMatch(source, /Set cookie failed:/)
 	assert.match(source, /httpOnly: true/)
 	assert.match(source, /isAllowedApiRequest/)
 	assert.match(source, /START_TASK_MONITOR/)
