@@ -25,7 +25,8 @@ test('名称广告清理由推送流程中的复选框控制', () => {
 	const content = read('content.js')
 
 	assert.match(popup, /AUTO_CLEAN_NAMES/)
-	assert.match(popup, /START_TASK_MONITOR/)
+	assert.match(popup, /SUBMIT_OFFLINE_TASK/)
+	assert.match(read('background.js'), /startTaskMonitor/)
 	assert.match(content, /AUTO_CLEAN_NAMES/)
 	assert.match(content, /cleanNamesRecursively/)
 	assert.match(content, /cleanTaskFolderName/)
@@ -33,7 +34,7 @@ test('名称广告清理由推送流程中的复选框控制', () => {
 	assert.match(content, /cleanTaskFolderName[\s\S]*processByCid/)
 	assert.match(content, /processByCid[\s\S]*deleteEmptyFoldersRecursively/)
 	assert.match(popup, /AUTO_DELETE_EMPTY_FOLDERS/)
-	assert.match(popup, /autoDeleteEmptyFolders/)
+	assert.match(read('background.js'), /config.push115_auto_delete_empty_folders/)
 	assert.match(read('background.js'), /deleteEmptyFoldersForMonitor/)
 	assert.match(read('background.js'), /renameTaskFolderForMonitor/)
 })
