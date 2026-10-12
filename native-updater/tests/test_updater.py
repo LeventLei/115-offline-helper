@@ -58,6 +58,46 @@ class UpdaterTest(unittest.TestCase):
         with mock.patch.object(u, 'latest_release', return_value=self.release), mock.patch.object(u, 'fetch_bytes', return_value=self.data):
             return self.client.install()
 
+    def test_path_input_formats(self):
+        expected = Path.home() / 'Library/Application Support/test extension'
+        for raw in ['~/资源库/Application Support/test extension',
+                    "'~/Library/Application Support/test extension'",
+                    '~/Library/Application\\ Support/test\\ extension',
+                    str(Path.home() / '资源库/Application Support/test extension')]:
+            self.assertEqual(u.normalize_target(raw), expected.resolve())
+        with self.assertRaises(u.UpdateError):
+            u.normalize_target("'unfinished")
+        with self.assertRaises(u.UpdateError):
+            u.normalize_target("'one' 'two'")
+
+    def test_permission_denial_is_distinct_and_redacted(self):
+        with mock.patch.object(Path, 'read_text', side_effect=PermissionError(1, 'private detail')):
+            for check in [lambda: u.read_manifest(self.target), lambda: u.Updater(self.support)]:
+                with self.assertRaises(u.UpdateError) as caught:
+                    check()
+                self.assertEqual(caught.exception.code, 'PERMISSION_DENIED')
+                self.assertNotIn('private detail', str(caught.exception))
+        original = Path.read_text
+        def deny_manifest(path, *args, **kwargs):
+            if path.name == 'manifest.json':
+                raise PermissionError(1, 'private detail')
+            return original(path, *args, **kwargs)
+        with mock.patch.object(Path, 'read_text', deny_manifest):
+            with self.assertRaises(u.UpdateError) as caught:
+                u.Updater(self.support)
+            self.assertEqual(caught.exception.code, 'PERMISSION_DENIED')
+
+    def test_permission_error_reaches_native_client(self):
+        destination = io.BytesIO()
+        with mock.patch.object(u, 'Updater', side_effect=u.permission_error()):
+            u.serve('chrome-extension://placeholder/', io.BytesIO(), destination)
+        raw = destination.getvalue()
+        size = struct.unpack('=I', raw[:4])[0]
+        response = json.loads(raw[4:4 + size])
+        self.assertFalse(response['success'])
+        self.assertEqual(response['code'], 'PERMISSION_DENIED')
+        self.assertIn('macOS', response['error'])
+
     def test_numeric_version(self):
         self.assertGreater(u.version('1.10.0'), u.version('1.9.9'))
         self.assertEqual(u.version('v1.3'), u.version('1.3.0'))
