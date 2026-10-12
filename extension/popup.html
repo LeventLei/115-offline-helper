@@ -138,6 +138,20 @@
 
 				<!-- Settings Tab -->
 				<div class="push115-tab-content" id="push115-tab-settings">
+                    <div class="push115-section" id="updater-section">
+                        <label class="push115-label" id="updater-title">插件更新</label>
+                        <div class="push115-hint" id="updater-current"></div>
+                        <div class="push115-hint" id="updater-latest"></div>
+                        <div class="push115-btn-group">
+                            <button class="push115-btn push115-btn-secondary" id="updater-check">检查更新</button>
+                            <button class="push115-btn push115-btn-primary" id="updater-install" hidden>更新并重新加载</button>
+                        </div>
+                        <div class="push115-hint" role="status" aria-live="polite" id="updater-status"></div>
+                        <button class="push115-btn push115-btn-secondary" id="updater-copy-id">复制扩展ID</button>
+                        <p class="push115-hint"><a id="updater-helper-link" href="https://github.com/LeventLei/115-offline-helper/releases/tag/v1.3.0" target="_blank" rel="noopener noreferrer">首次下载更新助手</a></p>
+                        <div class="push115-hint" id="updater-hint"></div>
+                    </div>
+
 					<div class="push115-section">
 						<label class="push115-label">语言 / Language</label>
 						<div class="push115-select-wrapper">
@@ -247,5 +261,6 @@
 		<script src="path-utils.js"></script>
 		<script src="offline-utils.js"></script>
 		<script src="popup.js"></script>
-	</body>
+		<script src="updater-ui.js"></script>
+</body>
 </html>

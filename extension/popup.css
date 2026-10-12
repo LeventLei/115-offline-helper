@@ -633,3 +633,6 @@ body.dark-theme .push115-qrcode-status {
 body.dark-theme .push115-qrcode-tip {
   color: #888;
 }
+
+#updater-section button[hidden] { display: none; }
+#updater-status { margin: 8px 0; }

@@ -14,7 +14,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/manifest-v3-blue" alt="Manifest V3">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/version-1.2.1-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.3.0-orange" alt="Version">
 </p>
 
 ---
@@ -122,3 +122,7 @@ Disable the previous TorBox userscript, update this extension, and refresh the d
 ## Persistent login (1.2.1)
 
 Scan the login QR code once after upgrading. New authentication cookies are stored only in the browser cookie jar for at most 30 days; an earlier persistent expiry for the same value is retained. This prevents loss solely from ending the browser session, but does not extend 115 server-side authorization. Revocation, competing logins and cookie clearing may still require login. Incomplete credentials or failed cookie writes now produce a sanitized error instead of reporting login success. No credential backup, keep-alive timer or new permissions are added.
+
+## One-click local updates (1.3.0, macOS Chrome)
+
+Keep the original extension installed and its directory unchanged. Bootstrap 1.3.0 in place once, reload it, and install the local helper via `sh Install.command` using the same directory and the extension ID. Settings now includes version information, Check updates and Update and reload. The updater checks only on opening Settings or a manual click; it never installs automatically. Submissions and post-processing defer installation. It verifies the public release digest, archive, identity and permissions, keeps a managed-file backup, and never reads Chrome preferences or cookies. Use the generated Restore.command followed by Chrome's Reload if activation fails. Local registration values are not packaged or committed.

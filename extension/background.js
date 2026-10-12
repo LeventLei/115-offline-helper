@@ -1,6 +1,9 @@
 // Background Service Worker
 
-importScripts('offline-utils.js', 'security-utils.js', 'submit-utils.js')
+importScripts('offline-utils.js', 'security-utils.js', 'submit-utils.js', 'updater-bridge.js')
+
+let updaterBridge = null;
+let activeApiRequests = 0;
 
 const STORAGE_KEYS = {
   AUTO_DETECT: 'push115_auto_detect',
@@ -103,6 +106,16 @@ chrome.alarms.onAlarm.addListener(alarm => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (!sender || sender.id !== chrome.runtime.id) {
     sendResponse({ success: false, error: '拒绝未知扩展来源' });
+    return false;
+  }
+
+  if (typeof request?.action === 'string' && request.action.startsWith('UPDATER_')) {
+    if (!updaterBridge) { sendResponse({ success: false, error: '更新组件不可用，请重新加载' }); return false; }
+    updaterBridge.handle(request, sender).then(sendResponse);
+    return true;
+  }
+  if (updaterBridge?.isInstalling() && ['SUBMIT_OFFLINE_TASK', 'API_REQUEST', 'START_TASK_MONITOR'].includes(request.action)) {
+    sendResponse({ success: false, error: '更新进行中，请稍后再提交或处理任务' });
     return false;
   }
 
@@ -467,6 +480,7 @@ async function handleTaskMonitorAlarm(monitorId) {
 
 // Handle generic API requests using fetch
 async function handleApiRequest(request, sendResponse) {
+  activeApiRequests += 1;
   let isLoginRequest = false;
   try {
     const { url, method = 'GET', data = null, headers = {} } = request.details || {};
@@ -536,7 +550,7 @@ async function handleApiRequest(request, sendResponse) {
         ? (safeLoginErrors.includes(error.message) ? error.message : LOGIN_FAILED)
         : error.message
     });
-  }
+  } finally { activeApiRequests -= 1; }
 }
 
 
@@ -592,4 +606,18 @@ async function submitOfflineTask(details = {}, magnetOnly = false) {
   })();
   submissionInflight.set(key, job);
   try { return await job } finally { submissionInflight.delete(key); }
+}
+
+
+if (globalThis.Push115Updater) {
+  updaterBridge = Push115Updater.create({
+    runtime: chrome.runtime,
+    isPopupSender: sender => sender.url === chrome.runtime.getURL('popup.html'),
+    getBusy: async () => {
+      if (activeApiRequests > 0 || submissionInflight.size > 0) return true;
+      const stored = await chrome.storage.session.get(TASK_MONITOR_STORAGE_KEY);
+      return Object.keys(stored[TASK_MONITOR_STORAGE_KEY] || {}).length > 0;
+    },
+  });
+  updaterBridge.confirmStartup().catch(() => {});
 }

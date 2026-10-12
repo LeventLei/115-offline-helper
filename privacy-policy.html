@@ -88,7 +88,7 @@
             <li>We do <strong>not</strong> sell, trade, or rent your data to anyone.</li>
             <li>We do <strong>not</strong> transfer data to third-party servers, advertising platforms, data brokers, or information resellers.</li>
             <li>We do <strong>not</strong> share data with any third party for any reason.</li>
-            <li>The <strong>only</strong> external communication is between your browser and 115.com servers (*.115.com), initiated solely to fulfill your download requests and manage your 115.com account.</li>
+            <li>Account and download operations communicate with 115.com servers (*.115.com). The optional local updater separately reads public GitHub release metadata and assets; no 115 credentials are sent to GitHub.</li>
         </ul>
 
         <h2 id="en-4">4. Data Storage and Security</h2>
@@ -129,7 +129,7 @@
         <p>We follow the <strong>principle of least privilege</strong>: we only request the minimum permissions necessary for the Extension to function. The broadest permission (<code>&lt;all_urls&gt;</code>) is optional and requires explicit user consent.</p>
 
         <h2 id="en-8">8. Network Requests</h2>
-        <p>The Extension communicates <strong>only</strong> with 115.com and its subdomains (*.115.com). Specifically:</p>
+        <p>The account features communicate with 115.com and its subdomains (*.115.com); the optional local updater additionally contacts GitHub public release services. Account endpoints:</p>
         <table>
             <tr><th>Endpoint Domain</th><th>Purpose</th></tr>
             <tr><td>my.115.com</td><td>Check login status</td></tr>
@@ -216,7 +216,7 @@
             <li>我们<strong>不会</strong>向任何人出售、交易或出租您的数据。</li>
             <li>我们<strong>不会</strong>将数据传输至第三方服务器、广告平台、数据代理商或信息转售商。</li>
             <li>我们<strong>不会</strong>以任何理由与任何第三方共享数据。</li>
-            <li><strong>唯一</strong>的外部通信发生在您的浏览器和 115.com 服务器 (*.115.com) 之间，仅用于执行您的下载请求和管理您的 115.com 账户。</li>
+            <li>账号及下载操作与 115.com 服务器 (*.115.com) 通信；可选本地更新器另行读取GitHub公开发行信息及文件，不向GitHub发送115凭据。</li>
         </ul>
 
         <h2 id="zh-4">4. 数据存储与安全</h2>
@@ -257,7 +257,7 @@
         <p>我们遵循<strong>最小权限原则</strong>：仅请求扩展功能所需的最低权限。最广泛的权限（<code>&lt;all_urls&gt;</code>）为可选权限，需要用户明确同意。</p>
 
         <h2 id="zh-8">8. 网络请求</h2>
-        <p>本扩展<strong>仅</strong>与 115.com 及其子域名 (*.115.com) 通信。具体如下：</p>
+        <p>账号功能与 115.com 及其子域名 (*.115.com) 通信；可选更新助手另行访问GitHub公开发行服务。账号接口具体如下：</p>
         <table>
             <tr><th>端点域名</th><th>用途</th></tr>
             <tr><td>my.115.com</td><td>检查登录状态</td></tr>
@@ -311,5 +311,6 @@
     }
 </script>
 <section><h2>TorBox integration / TorBox 集成（1.2.0）</h2><p>The extension also runs local scripts on https://torbox.app and https://www.torbox.app. A user click temporarily captures the native short-magnet clipboard write and submits that magnet to 115. It does not read the system clipboard or send authentication data to TorBox.</p><p>扩展还会在 TorBox 的两个精确域名运行本地脚本。用户点击后，临时捕获原生短磁力复制并提交到 115；不读取系统剪贴板，不向 TorBox 发送认证信息。</p></section>
+<section><h2>Local updater / 本地更新助手（1.3.0）</h2><p>The optional macOS helper stores the user-approved extension directory and allowed extension ID only in a private local configuration. It reads public release metadata and files from GitHub and its release-asset hosts, with no account or cookie data. It updates only the registered extension directory and keeps managed extension files for recovery. It does not access Chrome cookies or storage. No automatic update installation or background network polling occurs.</p><p>可选macOS助手仅在本机私有配置中登记用户指定的扩展目录和扩展ID。仅从GitHub及其发行资产域名读取公开版本和文件，不发送账号或Cookie。只更新登记目录、备份受管理的扩展发行文件，不访问Chrome的Cookie或存储。不后台轮询、不自动安装更新。</p></section>
 </body>
 </html>

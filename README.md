@@ -14,7 +14,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/manifest-v3-blue" alt="Manifest V3">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/version-1.2.1-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.3.0-orange" alt="Version">
 </p>
 
 ---
@@ -67,6 +67,19 @@
 > **💡 提示：** 更新时运行 `git pull` 拉取最新代码，然后在扩展管理页面点击 ↻ 刷新按钮即可。
 
 > **💡 兼容性：** 本扩展基于 Manifest V3，支持所有 Chromium 内核浏览器（Chrome、Edge、Brave、Arc 等）。
+
+## 一键更新（1.3.0，macOS Chrome）
+
+**不要卸载扩展。** 首次原位覆盖1.3.0文件并重新加载，再安装一次发行页的本地更新助手。打开插件设置页即可显示当前版本、检查最新版本，后续点击「更新并重新加载」自动下载、校验、原位覆盖并重新加载。
+
+1. 从发行页下载扩展包及 `levent-115-updater_macos_v1.3.0.zip` 助手包。
+2. 将扩展包覆盖原来的扩展目录，不移动目录、不删除扩展；在Chrome扩展管理页重新加载。
+3. 解压助手包，运行 `sh Install.command`，输入同一个扩展目录和详情页的32位ID。也可在插件设置页点「复制扩展ID」。
+4. 打开设置页点「检查更新」，后续无需重新填写保存目录、过滤词等设置。
+
+助手只在点击或打开设置页时检查，不自动安装。更新有提交或后处理任务时会暂缓；新增权限、扩展标识不一致、摘要不一致或非法安装包会阻止原位更新。只从本仓库正式发行读取升级信息，不读取系统Cookie或Chrome存储。
+
+更新失败可运行用户 Application Support 中 Levent115Updater 文件夹的 `Restore.command` 恢复上一版，然后在Chrome扩展管理页重新加载。本机路径、扩展ID登记及备份只在私有目录保留，不包含在源码或发行包里。助手自身若需升级会另行提示。
 
 ## 登录持久化（1.2.1）
 
