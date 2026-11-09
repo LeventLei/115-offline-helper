@@ -210,3 +210,10 @@ test('更新调用异常及复制失败使用可切换语言的固定提示', as
   assert.match(f.document.getElementById('updater-status').textContent, /^复制失败/)
   f.dom.window.close()
 })
+
+test('弹窗body宽度不依赖视口单位，避免Chrome弹窗被压窄', () => {
+  const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '../extension/popup.css'), 'utf8')
+  const body = css.match(/\nbody \{[^}]*\}/)[0]
+  assert.match(body, /width: 440px/)
+  assert.doesNotMatch(body, /vw|vh/)
+})
