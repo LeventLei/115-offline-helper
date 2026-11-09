@@ -850,8 +850,18 @@ function injectModalStyles() {
     }
     .push115-modal-btn-confirm:hover { background: #0066d6; }
     .push115-modal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .push115-toast {
+    .push115-toast-stack {
       position: fixed; top: 16px; right: 16px;
+      width: 380px; max-width: calc(100vw - 32px);
+      max-height: calc(100vh - 32px); overflow-y: auto;
+      display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+      z-index: 2147483647; pointer-events: none;
+    }
+    .push115-toast-stack:empty { display: none; }
+    .push115-toast {
+      box-sizing: border-box; max-width: 100%; width: fit-content;
+      min-width: 0; flex: 0 0 auto; overflow-wrap: anywhere; line-height: 1.45;
+      pointer-events: auto;
       padding: 12px 20px; border-radius: 10px;
       font-size: 13px; font-weight: 500; z-index: 2147483647;
       box-shadow: 0 4px 16px rgba(0,0,0,0.12);
@@ -864,7 +874,9 @@ function injectModalStyles() {
     .push115-toast.warning { background: #ff9f0a; color: #fff; }
     .push115-toast.push115-sticky {
       display: flex; align-items: center; gap: 10px;
-      max-width: 380px; line-height: 1.45;
+    }
+    .push115-toast.push115-sticky > span:last-child {
+      min-width: 0;
     }
     .push115-toast-spinner {
       width: 14px; height: 14px; border-radius: 50%;
@@ -884,23 +896,32 @@ function injectModalStyles() {
 
 let stickyToastEl = null
 
-function showToast(type, msg, timeout = 3000) {
-	if (stickyToastEl) {
-		stickyToastEl.remove()
-		stickyToastEl = null
+function getToastStack() {
+	let stack = document.getElementById('push115-toast-stack')
+	if (!stack) {
+		stack = document.createElement('div')
+		stack.id = 'push115-toast-stack'
+		stack.className = 'push115-toast-stack'
+		document.body.appendChild(stack)
 	}
+	return stack
+}
+
+function showToast(type, msg, timeout = 3000) {
 	const existing = document.querySelector('.push115-toast:not(.push115-sticky)')
 	if (existing) existing.remove()
 	const toast = document.createElement('div')
 	toast.className = `push115-toast ${type}`
+	toast.setAttribute('role', 'status')
 	toast.textContent = msg
-	document.body.appendChild(toast)
+	getToastStack().appendChild(toast)
 	if (timeout) setTimeout(() => toast.remove(), timeout)
 }
 
 function showStickyToast(type, msg, withSpinner = true) {
-	if (stickyToastEl) stickyToastEl.remove()
-	stickyToastEl = document.createElement('div')
+	if (!stickyToastEl) stickyToastEl = document.createElement('div')
+	stickyToastEl.replaceChildren()
+	stickyToastEl.setAttribute('role', 'status')
 	stickyToastEl.className = `push115-toast push115-sticky ${type}`
 	if (withSpinner) {
 		const spinnerEl = document.createElement('span')
@@ -910,7 +931,8 @@ function showStickyToast(type, msg, withSpinner = true) {
 	const msgSpan = document.createElement('span')
 	msgSpan.textContent = msg
 	stickyToastEl.appendChild(msgSpan)
-	document.body.appendChild(stickyToastEl)
+	const stack = getToastStack()
+	if (stickyToastEl.parentNode !== stack) stack.appendChild(stickyToastEl)
 }
 
 function hideStickyToast() {
