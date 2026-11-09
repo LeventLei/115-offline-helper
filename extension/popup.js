@@ -52,6 +52,7 @@ const I18N_STRINGS = {
 		auto_clean_names_hint: '推送完成并确认任务目录后自动执行',
 		auto_delete_empty_folders_label: '自动删除空文件夹',
 		auto_delete_empty_folders_hint: '在文件整理和清理完成后检查本次任务目录',
+		processing_options: '任务后自动处理',
 		auto_delete_label: '自动删除小文件',
 		delete_size_label_pre: '删除小于',
 		delete_size_label_post: 'MB的文件',
@@ -93,6 +94,7 @@ const I18N_STRINGS = {
 		auto_clean_names_hint: 'Runs after a pushed task completes and its folder is confirmed',
 		auto_delete_empty_folders_label: 'Automatically delete empty folders',
 		auto_delete_empty_folders_hint: 'Checks the task folder after organization and cleanup finish',
+		processing_options: 'After-task processing',
 		auto_delete_label: 'Auto delete small files',
 		delete_size_label_pre: 'Delete files <',
 		delete_size_label_post: 'MB',
@@ -178,7 +180,14 @@ function applyTheme(theme) {
 }
 
 function applyLocale() {
-	// Update all text elements
+	document.documentElement.lang = getConfig(CONFIG_KEYS.I18N_LOCALE) || 'zh-CN'
+	document.getElementById('push115-language-select').value = document.documentElement.lang
+	document.getElementById('label-language').textContent = t('settings_language_label')
+	document.getElementById('label-theme').textContent = t('settings_theme_label')
+	document.getElementById('label-processing-options').textContent = t('processing_options')
+	for (const option of document.getElementById('push115-theme-select').options) {
+		option.textContent = t(`theme_${option.value}`)
+	}
 	document.getElementById('push115-title-text').textContent = t('panel_title')
 	document.querySelector('[data-tab="home"]').textContent = t('tab_home')
 	document.querySelector('[data-tab="settings"]').textContent = t('tab_settings')
@@ -209,6 +218,7 @@ function applyLocale() {
 	setBtnContent('push115-login-btn', 'icons/115.png', t('login_btn'))
 
 	renderSaveDirSelect()
+	document.dispatchEvent(new Event('push115-locale-change'))
 }
 
 function getRootLabel() {
