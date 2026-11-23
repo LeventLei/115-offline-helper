@@ -1,6 +1,28 @@
 // Content Script for 115 Offline Helper
 // Only handles link detection on web pages. UI is in popup.html.
 
+// 包在函数作用域内，扩展更新后重新注入时不会因顶层 const 重复声明而失败。
+;(() => {
+const instanceToken = {}
+const EXTENSION_RELOADED_MESSAGE = '扩展已更新或重新加载，请刷新页面后重试'
+
+function isExtensionContextValid() {
+	try {
+		return Boolean(chrome.runtime?.id)
+	} catch (_) {
+		return false
+	}
+}
+
+// 旧实例在扩展更新后失效，或被新注入的实例取代时，不再响应页面事件。
+function isActiveInstance() {
+	return window.__push115_instance === instanceToken && isExtensionContextValid()
+}
+
+function isContextInvalidatedError(error) {
+	return /extension context invalidated/i.test(String(error?.message || error || ''))
+}
+
 const CONFIG_KEYS = {
 	SAVE_PATH: 'push115_save_path',
 	SAVE_PATH_CID: 'push115_save_path_cid',
@@ -584,6 +606,13 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 			await processByCid(taskFolderCid, effectiveTaskName, rootRenamedCount)
 			return
 		} catch (err) {
+			if (!isExtensionContextValid()) {
+				if (modalType === 'toast') {
+					hideStickyToast()
+					showToast('error', '扩展已更新或重新加载，自动处理已中止，请刷新页面', 8000)
+				}
+				return
+			}
 			console.error('Monitor error:', err)
 			if (modalType === 'toast' && retries % 3 === 0) {
 				showStickyToast('warning', '网络波动，正在重试处理...')
@@ -699,19 +728,24 @@ function t(key) {
 // Helper to safely send message
 function sendMessage(action, details = {}) {
 	return new Promise((resolve, reject) => {
-		if (!chrome.runtime || !chrome.runtime.sendMessage) {
-			reject(new Error('Extension context invalidated. Please refresh the page.'))
+		if (!isExtensionContextValid()) {
+			reject(new Error(EXTENSION_RELOADED_MESSAGE))
 			return
 		}
-		chrome.runtime.sendMessage({ action, details }, response => {
-			if (chrome.runtime.lastError) {
-				reject(chrome.runtime.lastError)
-			} else if (response && response.success) {
-				resolve(response)
-			} else {
-				reject(new Error(response?.error || 'Unknown error'))
-			}
-		})
+		try {
+			chrome.runtime.sendMessage({ action, details }, response => {
+				const lastError = chrome.runtime.lastError
+				if (lastError) {
+					reject(new Error(isContextInvalidatedError(lastError) ? EXTENSION_RELOADED_MESSAGE : lastError.message))
+				} else if (response && response.success) {
+					resolve(response)
+				} else {
+					reject(new Error(response?.error || 'Unknown error'))
+				}
+			})
+		} catch (error) {
+			reject(new Error(isContextInvalidatedError(error) ? EXTENSION_RELOADED_MESSAGE : error?.message || String(error)))
+		}
 	})
 }
 
@@ -894,6 +928,8 @@ function injectModalStyles() {
     }
   `
 	injectedStylesText = style.textContent
+	style.setAttribute('data-push115-styles', '')
+	document.querySelectorAll('style[data-push115-styles]').forEach(node => node.remove())
 	document.head.appendChild(style)
 }
 
@@ -1141,7 +1177,7 @@ async function init() {
 
 	// Link click listener
 	document.addEventListener('click', e => {
-		if (!hasTrustedUserGesture(e) || !getConfig(CONFIG_KEYS.AUTO_DETECT)) return
+		if (!isActiveInstance() || !hasTrustedUserGesture(e) || !getConfig(CONFIG_KEYS.AUTO_DETECT)) return
 		const link = e.target.closest('a')
 		if (!link) return
 
@@ -1157,7 +1193,7 @@ async function init() {
 
 	// Copy event listener - detect magnet/ed2k links from the current selection
 	document.addEventListener('copy', event => {
-		if (!event.isTrusted || !getConfig(CONFIG_KEYS.AUTO_DETECT)) return
+		if (!isActiveInstance() || !event.isTrusted || !getConfig(CONFIG_KEYS.AUTO_DETECT)) return
 
 		const links = Push115OfflineUtils.extractOfflineLinks(getSelectedText())
 		if (links.length > 0) createConfirmModal(links, 'Magnet/ED2K')
@@ -1165,7 +1201,7 @@ async function init() {
 
 	// Listen for config changes
 	chrome.storage.onChanged.addListener((changes, area) => {
-		if (area === 'local') {
+		if (area === 'local' && isActiveInstance()) {
 			for (const key in changes) {
 				if (Object.values(CONFIG_KEYS).includes(key)) {
 					configCache[key] = changes[key].newValue
@@ -1175,8 +1211,9 @@ async function init() {
 	})
 }
 
-// Guard against duplicate injection (registerContentScripts + executeScript)
-if (!window.__push115_initialized) {
-	window.__push115_initialized = true
+// 每次注入都由最新实例接管；扩展更新后重新注入时，失效的旧实例自动停止响应。
+if (isExtensionContextValid()) {
+	window.__push115_instance = instanceToken
 	init()
 }
+})()

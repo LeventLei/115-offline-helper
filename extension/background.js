@@ -81,8 +81,13 @@ async function syncContentScriptState() {
 }
 
 // On install or startup, sync state
-chrome.runtime.onInstalled.addListener(() => {
-  syncContentScriptState();
+// 扩展安装、更新或重新加载后，已打开页面里的旧脚本会失效，需要重新注入新脚本。
+chrome.runtime.onInstalled.addListener(async () => {
+  await syncContentScriptState();
+  const data = await chrome.storage.local.get(STORAGE_KEYS.AUTO_DETECT);
+  if (data[STORAGE_KEYS.AUTO_DETECT] === true && await chrome.permissions.contains({ origins: PAGE_ORIGINS })) {
+    await injectIntoExistingTabs();
+  }
 });
 
 chrome.runtime.onStartup.addListener(() => {
