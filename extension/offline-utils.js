@@ -75,11 +75,81 @@
 		return Array.isArray(items) && items.length === 0
 	}
 
+	function normalizeFolderCid(value) {
+		const cid = String(value ?? '').trim()
+		return /^\d+$/.test(cid) && cid !== '0' ? cid : ''
+	}
+
+	// 115 任务的 wppath_id 是保存目录本身，不能当作任务目录；与保存目录相同的候选也一律排除。
+	function getTaskFolderCidCandidates(task, savePathCid) {
+		const saveCid = String(savePathCid ?? '').trim()
+		const seen = new Set()
+		return [task?.file_id, task?.fileId, task?.dir_id, task?.dirId]
+			.map(normalizeFolderCid)
+			.filter(cid => {
+				if (!cid || cid === saveCid || seen.has(cid)) return false
+				seen.add(cid)
+				return true
+			})
+	}
+
+	// 115 对无效 cid 可能回退返回其他目录的列表，需核对响应中的 cid 与路径末级。
+	function isListingOfCid(response, cid) {
+		const target = normalizeFolderCid(cid)
+		if (!target || !response || !Array.isArray(response.data)) return false
+		if (response.cid !== undefined && response.cid !== null && String(response.cid) !== target) return false
+		const path = Array.isArray(response.path) ? response.path : []
+		const last = path[path.length - 1]
+		if (last && last.cid !== undefined && last.cid !== null && String(last.cid) !== target) return false
+		return true
+	}
+
+	function normalizeTaskName(value) {
+		return String(value || '')
+			.normalize('NFKC')
+			.toLocaleLowerCase()
+			.replace(/[\s\\/:*?"<>|._\-+=~`'!@#$%^&;,，。、（）()[\]{}【】《》]+/gu, '')
+	}
+
+	function stripExtension(name) {
+		return String(name || '').replace(/\.[a-z0-9]{1,6}$/i, '')
+	}
+
+	// 只在保存目录的直接子文件夹中查找；列表按上传时间倒序，精确匹配取最新一个，模糊匹配出现多个候选时视为无法确认。
+	function findTaskFolderInList(items, taskName) {
+		const target = normalizeTaskName(taskName)
+		if (!target || !Array.isArray(items)) return ''
+		const folders = items.filter(item => item && !item.sha)
+		const nameOf = item => normalizeTaskName(item.n || item.name)
+		const exact = folders.find(item => nameOf(item) === target)
+		if (exact) return normalizeFolderCid(exact.cid || exact.fid)
+		const fuzzy = folders.filter(item => nameOf(item).includes(target))
+		return fuzzy.length === 1 ? normalizeFolderCid(fuzzy[0].cid || fuzzy[0].fid) : ''
+	}
+
+	function isTaskSingleFile(items, taskName) {
+		const target = normalizeTaskName(taskName)
+		const targetStem = normalizeTaskName(stripExtension(taskName))
+		if (!target || !Array.isArray(items)) return false
+		return items.some(item => {
+			if (!item || !item.sha) return false
+			const raw = item.n || item.name
+			const name = normalizeTaskName(raw)
+			const stem = normalizeTaskName(stripExtension(raw))
+			return name === target || stem === target || (targetStem && stem === targetStem)
+		})
+	}
+
 	const api = {
 		extractOfflineLinks,
 		normalizeFilterTerms,
 		sanitizeName,
 		isEmptyFolderItems,
+		getTaskFolderCidCandidates,
+		isListingOfCid,
+		normalizeTaskName,
+		findTaskFolderInList,
+		isTaskSingleFile,
 	}
 
 	global.Push115OfflineUtils = api
