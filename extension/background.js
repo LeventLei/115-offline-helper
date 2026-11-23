@@ -300,21 +300,28 @@ async function updateTaskMonitor(monitorId, monitor) {
   await chrome.storage.session.set({ [TASK_MONITOR_STORAGE_KEY]: monitors });
 }
 
+async function isFolderListingForMonitor(cid) {
+  try {
+    const listing = await fetch115Json(`https://webapi.115.com/files?aid=1&cid=${cid}&o=user_ptime&asc=0&offset=0&show_dir=1&limit=1&snap=0&natsort=1`);
+    return Push115OfflineUtils.isListingOfCid(listing, cid);
+  } catch (error) {
+    console.warn('[任务监控] 任务目录候选不可用:', error?.message || error);
+    return false;
+  }
+}
+
 async function resolveTaskFolderForMonitor(task, savePathCid) {
-  const directCid = normalizeMonitorCid(task?.file_id || task?.fileId || task?.dir_id || task?.dirId || task?.wppath_id);
-  if (directCid) {
-    const direct = await fetch115Json(`https://webapi.115.com/files?aid=1&cid=${directCid}&o=user_ptime&asc=0&offset=0&show_dir=1&limit=1&snap=0&natsort=1`);
-    if (Array.isArray(direct.data)) return directCid;
+  for (const candidate of Push115OfflineUtils.getTaskFolderCidCandidates(task, savePathCid)) {
+    if (await isFolderListingForMonitor(candidate)) return { cid: candidate, singleFile: false };
   }
 
-  const taskName = String(task?.name || '').trim().toLocaleLowerCase();
-  if (!taskName) return '';
+  const taskName = String(task?.name || '').trim();
+  if (!taskName) return { cid: '', singleFile: false };
   const parent = await fetch115Json(`https://webapi.115.com/files?aid=1&cid=${savePathCid}&o=user_ptime&asc=0&offset=0&show_dir=1&limit=500&snap=0&natsort=1`);
-  const folders = Array.isArray(parent.data) ? parent.data.filter(item => !item.sha) : [];
-  const normalizeName = item => String(item?.n || item?.name || '').trim().toLocaleLowerCase();
-  const exact = folders.find(item => normalizeName(item) === taskName);
-  const fuzzy = exact || folders.find(item => normalizeName(item).includes(taskName));
-  return normalizeMonitorCid(fuzzy?.cid || fuzzy?.fid);
+  const items = Array.isArray(parent.data) ? parent.data : [];
+  const cid = Push115OfflineUtils.findTaskFolderInList(items, taskName);
+  if (cid && await isFolderListingForMonitor(cid)) return { cid, singleFile: false };
+  return { cid: '', singleFile: Push115OfflineUtils.isTaskSingleFile(items, taskName) };
 }
 
 async function renameTaskFolderForMonitor(taskCid, taskName, savePathCid, filterTerms) {
@@ -459,7 +466,12 @@ async function handleTaskMonitorAlarm(monitorId) {
       return;
     }
 
-    const targetCid = await resolveTaskFolderForMonitor(task, monitor.savePathCid);
+    const resolved = await resolveTaskFolderForMonitor(task, monitor.savePathCid);
+    if (resolved.singleFile) {
+      await removeTaskMonitor(monitorId);
+      return;
+    }
+    const targetCid = resolved.cid;
     if (!targetCid) {
       monitor.running = false;
       await updateTaskMonitor(monitorId, monitor);

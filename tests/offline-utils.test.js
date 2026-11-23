@@ -6,6 +6,10 @@ const {
 	normalizeFilterTerms,
 	sanitizeName,
 	isEmptyFolderItems,
+	getTaskFolderCidCandidates,
+	isListingOfCid,
+	findTaskFolderInList,
+	isTaskSingleFile,
 } = require('../extension/offline-utils.js')
 
 test('从同一行空格分隔文本中批量提取磁力链接', () => {
@@ -65,4 +69,46 @@ test('只有真正没有子项的目录才视为空文件夹', () => {
 	assert.equal(isEmptyFolderItems([]), true)
 	assert.equal(isEmptyFolderItems([{ fid: '1', sha: 'file-sha' }]), false)
 	assert.equal(isEmptyFolderItems(null), false)
+})
+
+test('任务目录候选排除保存目录、根目录与 wppath_id', () => {
+	const task = { file_id: '123456789', dir_id: '123456789', wppath_id: '987654321', fileId: '0' }
+	assert.deepEqual(getTaskFolderCidCandidates(task, '987654321'), ['123456789'])
+	assert.deepEqual(getTaskFolderCidCandidates({ file_id: '987654321' }, '987654321'), [])
+	assert.deepEqual(getTaskFolderCidCandidates({ wppath_id: '123456789' }, '0'), [])
+})
+
+test('目录列表必须确实属于请求的 cid', () => {
+	assert.equal(isListingOfCid({ cid: '123456789', data: [] }, '123456789'), true)
+	assert.equal(isListingOfCid({ cid: 0, data: [{}] }, '123456789'), false)
+	assert.equal(isListingOfCid({ data: [], path: [{ cid: 0 }, { cid: 111 }] }, '123456789'), false)
+	assert.equal(isListingOfCid({ state: false }, '123456789'), false)
+	assert.equal(isListingOfCid({ cid: '0', data: [] }, '0'), false)
+})
+
+test('按名称匹配任务目录时容忍 115 替换的特殊字符', () => {
+	const items = [
+		{ n: 'Other Folder', cid: '111' },
+		{ n: 'Demo Show_S01 1080p', cid: '222' },
+		{ n: 'Demo Show: S01 1080p.mkv', fid: '333', sha: 'x' },
+	]
+	assert.equal(findTaskFolderInList(items, 'Demo Show: S01 1080p'), '222')
+	assert.equal(findTaskFolderInList(items, 'Missing'), '')
+})
+
+test('模糊匹配到多个目录时拒绝猜测', () => {
+	const items = [
+		{ n: 'Demo Pack A', cid: '111' },
+		{ n: 'Demo Pack B', cid: '222' },
+	]
+	assert.equal(findTaskFolderInList(items, 'Demo Pack'), '')
+	assert.equal(findTaskFolderInList([{ n: 'Demo Pack', cid: '333' }, ...items], 'Demo Pack'), '333')
+})
+
+test('识别没有独立目录的单文件任务', () => {
+	const items = [{ n: 'demo.video.mp4', fid: '444', sha: 'x' }]
+	assert.equal(isTaskSingleFile(items, 'demo.video.mp4'), true)
+	assert.equal(isTaskSingleFile(items, 'demo.video'), true)
+	assert.equal(isTaskSingleFile(items, 'another'), false)
+	assert.equal(isTaskSingleFile([{ n: 'demo.video.mp4', cid: '555' }], 'demo.video.mp4'), false)
 })

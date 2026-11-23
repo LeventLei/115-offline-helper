@@ -428,41 +428,33 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 	const maxRetries = 120
 	let retries = 0
 	let taskName = taskMeta?.name || ''
-	let taskFileCid = ''
+	let folderMisses = 0
+	const maxFolderMisses = 6
 
 	if (modalType === 'toast') {
 		showStickyToast('info', '已推送成功，正在等待离线任务完成，请勿关闭页面...')
 	}
 
-	const resolveTaskFolderCid = async () => {
-		if (taskFileCid) return taskFileCid
-		if (!taskName) return ''
-
-		const list = await getFileList(savePathCid)
-		if (!list.data || !Array.isArray(list.data)) return ''
-
-		const normalize = v => (v || '').toString().trim().toLowerCase()
-		const taskNameNorm = normalize(taskName)
-		const folders = list.data.filter(item => !item.sha)
-
-		const exact = folders.find(item => normalize(item.n || item.name) === taskNameNorm)
-		if (exact) return exact.cid || exact.fid
-
-		const fuzzy = folders.find(item => normalize(item.n || item.name).includes(taskNameNorm))
-		if (fuzzy) return fuzzy.cid || fuzzy.fid
-
-		return ''
-	}
-
-	const ensureUsableCid = async candidateCid => {
-		if (!candidateCid) return ''
-		try {
-			const list = await getFileList(candidateCid)
-			if (list?.data && Array.isArray(list.data)) return candidateCid
-		} catch (e) {
-			console.log('[监控] 目录不可用，准备回退:', candidateCid, e?.message || e)
+	const resolveTaskFolder = async task => {
+		for (const candidate of Push115OfflineUtils.getTaskFolderCidCandidates(task, savePathCid)) {
+			try {
+				const list = await getFileList(candidate, 0, 1)
+				if (Push115OfflineUtils.isListingOfCid(list, candidate)) return { cid: candidate, singleFile: false }
+			} catch (e) {
+				console.log('[监控] 任务目录候选不可用，继续回退:', e?.message || e)
+			}
 		}
-		return ''
+
+		const name = task?.name || taskName
+		if (!name) return { cid: '', singleFile: false }
+		const parent = await getFileList(savePathCid)
+		const items = Array.isArray(parent?.data) ? parent.data : []
+		const cid = Push115OfflineUtils.findTaskFolderInList(items, name)
+		if (cid) {
+			const list = await getFileList(cid, 0, 1)
+			if (Push115OfflineUtils.isListingOfCid(list, cid)) return { cid, singleFile: false }
+		}
+		return { cid: '', singleFile: Push115OfflineUtils.isTaskSingleFile(items, name) }
 	}
 
 	const processByCid = async (targetCid, currentFolderName = '', rootRenamedCount = 0) => {
@@ -536,9 +528,6 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 			}
 
 			if (!taskName && task.name) taskName = task.name
-			if (!taskFileCid) {
-				taskFileCid = task.file_id || task.fileId || task.dir_id || task.dirId || task.wppath_id || ''
-			}
 
 			const isCompleted = task.status === 2 || task.percentDone === 100 || task.state === 1
 			if (!isCompleted) {
@@ -561,8 +550,22 @@ async function monitorTaskAndOrganize(taskMeta, savePathCid, modalType = 'defaul
 				showStickyToast('info', '离线任务已完成，正在处理文件...')
 			}
 
-			const taskFolderCid = await ensureUsableCid(taskFileCid || (await resolveTaskFolderCid()))
+			const resolved = await resolveTaskFolder(task)
+			const taskFolderCid = resolved.cid
 			if (!taskFolderCid) {
+				if (resolved.singleFile) {
+					if (modalType === 'toast') {
+						hideStickyToast()
+						showToast('warning', '该任务为单文件，没有独立目录，已跳过自动处理', 6000)
+					}
+					return
+				}
+				folderMisses++
+				if (folderMisses < maxFolderMisses) {
+					if (modalType === 'toast') showStickyToast('info', '离线任务已完成，正在等待 115 生成任务目录...')
+					retries++
+					continue
+				}
 				if (modalType === 'toast') {
 					hideStickyToast()
 					showToast('error', '无法确认新任务的独立目录，已安全停止自动处理', 7000)
