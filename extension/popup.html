@@ -10,7 +10,7 @@
 		<div class="push115-panel" id="push115-panel">
 			<div class="push115-header">
 				<span class="push115-header-title" id="push115-title">
-					<img src="icons/logo.png" width="36" height="36" alt="logo" />
+					<img src="icons/logo.png" width="28" height="28" alt="logo" />
 					<span id="push115-title-text">115离线助手</span>
 				</span>
 				<div class="push115-header-btns">
@@ -45,6 +45,7 @@
 						</div>
 					</div>
 
+					<div class="push115-card">
 					<div class="push115-section">
 						<label class="push115-label" id="label-batch-links" for="push115-links-input">批量离线链接</label>
 						<textarea
@@ -68,14 +69,15 @@
 							识别并推送
 						</button>
 					</div>
+					</div>
 
 					<div class="push115-section push115-btn-group push115-home-actions">
 						<button class="push115-btn push115-btn-secondary push115-btn-full" id="push115-check-login">
-							<img src="icons/check.png" width="16" height="16" />
+							<span class="push115-btn-icon push115-icon-check" aria-hidden="true"></span>
 							检查状态
 						</button>
 						<button class="push115-btn push115-btn-secondary push115-btn-full" id="push115-login-btn">
-							<img src="icons/115.png" width="16" height="16" />
+							<span class="push115-btn-icon push115-icon-login" aria-hidden="true"></span>
 							扫码登录
 						</button>
 					</div>
@@ -142,20 +144,21 @@
 
 				<!-- Settings Tab -->
 				<div class="push115-tab-content" id="push115-tab-settings">
-                    <div class="push115-section" id="updater-section">
-                        <label class="push115-label" id="updater-title">插件更新</label>
-                        <div class="push115-hint" id="updater-current"></div>
-                        <div class="push115-hint" id="updater-latest"></div>
-                        <div class="push115-btn-group">
-                            <button class="push115-btn push115-btn-secondary" id="updater-check">检查更新</button>
-                            <button class="push115-btn push115-btn-primary" id="updater-install" hidden>更新并重新加载</button>
-                        </div>
-                        <div class="push115-hint" role="status" aria-live="polite" id="updater-status"></div>
-                        <button class="push115-btn push115-btn-secondary" id="updater-copy-id">复制扩展ID</button>
-                        <p class="push115-hint"><a id="updater-helper-link" href="https://github.com/LeventLei/115-offline-helper/releases/tag/v1.3.0" target="_blank" rel="noopener noreferrer">首次下载更新助手</a></p>
-                        <div class="push115-hint" id="updater-hint"></div>
-                    </div>
+					<div class="push115-card" id="updater-section">
+						<label class="push115-label" id="updater-title">插件更新</label>
+						<div class="push115-hint" id="updater-current"></div>
+						<div class="push115-hint" id="updater-latest"></div>
+						<div class="push115-btn-row">
+							<button class="push115-btn push115-btn-secondary" id="updater-check">检查更新</button>
+							<button class="push115-btn push115-btn-secondary" id="updater-copy-id">复制扩展ID</button>
+						</div>
+						<button class="push115-btn push115-btn-primary push115-btn-full push115-section-action" id="updater-install" hidden>更新并重新加载</button>
+						<div class="push115-hint" role="status" aria-live="polite" id="updater-status"></div>
+						<p class="push115-hint"><a id="updater-helper-link" class="push115-link" href="https://github.com/LeventLei/115-offline-helper/releases/tag/v1.3.0" target="_blank" rel="noopener noreferrer">首次下载更新助手</a></p>
+						<div class="push115-hint" id="updater-hint"></div>
+					</div>
 
+					<div class="push115-card push115-card-grid">
 					<div class="push115-section">
 						<label class="push115-label" id="label-language" for="push115-language-select">语言 / Language</label>
 						<div class="push115-select-wrapper">
@@ -176,7 +179,9 @@
 							</select>
 						</div>
 					</div>
+					</div>
 
+					<div class="push115-card">
 					<div class="push115-section">
 						<label class="push115-label" id="label-save-dirs">115 离线目录 (一行一个)</label>
 						<textarea
@@ -197,8 +202,9 @@
 						<div class="push115-hint" id="hint-name-filters">支持直接粘贴 Markdown 链接形式，清理时按字面量匹配</div>
 					</div>
 
-					<div class="push115-divider"></div>
+					</div>
 
+					<div class="push115-card">
 					<div class="push115-section">
 						<div class="push115-checkbox-group">
 							<input type="checkbox" class="push115-checkbox" id="push115-auto-detect" />
@@ -207,6 +213,7 @@
 							>
 						</div>
 						<div class="push115-hint" id="hint-auto-detect">在所有网页上自动检测 magnet/ed2k 链接（需要额外权限）</div>
+					</div>
 					</div>
 				</div>
 			</div>

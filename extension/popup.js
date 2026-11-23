@@ -148,16 +148,15 @@ function setConfig(key, value) {
 	configCache[key] = value
 	chrome.storage.local.set({ [key]: value })
 }
-function setBtnContent(btnId, iconSrc, text) {
+function setBtnContent(btnId, iconName, text) {
 	const btn = document.getElementById(btnId)
 	if (!btn) return
 	btn.textContent = ''
-	const img = document.createElement('img')
-	img.src = iconSrc
-	img.width = 16
-	img.height = 16
-	btn.appendChild(img)
-	btn.appendChild(document.createTextNode(' ' + text))
+	const icon = document.createElement('span')
+	icon.className = `push115-btn-icon push115-icon-${iconName}`
+	icon.setAttribute('aria-hidden', 'true')
+	btn.appendChild(icon)
+	btn.appendChild(document.createTextNode(text))
 }
 
 function showStatus(type, msg, timeout = 3000) {
@@ -214,8 +213,8 @@ function applyLocale() {
 	document.getElementById('hint-auto-clean-names').textContent = t('auto_clean_names_hint')
 	document.getElementById('label-auto-delete-empty-folders').textContent = t('auto_delete_empty_folders_label')
 	document.getElementById('hint-auto-delete-empty-folders').textContent = t('auto_delete_empty_folders_hint')
-	setBtnContent('push115-check-login', 'icons/check.png', t('check_login_text'))
-	setBtnContent('push115-login-btn', 'icons/115.png', t('login_btn'))
+	setBtnContent('push115-check-login', 'check', t('check_login_text'))
+	setBtnContent('push115-login-btn', 'login', t('login_btn'))
 
 	renderSaveDirSelect()
 	document.dispatchEvent(new Event('push115-locale-change'))
@@ -379,7 +378,7 @@ function bindEvents() {
 	document.getElementById('push115-check-login').addEventListener('click', async () => {
 		const btn = document.getElementById('push115-check-login')
 		btn.disabled = true
-		setBtnContent('push115-check-login', 'icons/check.png', t('processing'))
+		setBtnContent('push115-check-login', 'check', t('processing'))
 		try {
 			const response = await sendMessage('API_REQUEST', {
 				url: 'https://my.115.com/?ct=guide&ac=status',
@@ -391,7 +390,7 @@ function bindEvents() {
 			showStatus('error', t('login_fail'))
 		}
 		btn.disabled = false
-		setBtnContent('push115-check-login', 'icons/check.png', t('check_login_text'))
+		setBtnContent('push115-check-login', 'check', t('check_login_text'))
 	})
 
 	// Login Button - open modal
