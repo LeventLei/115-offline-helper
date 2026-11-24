@@ -888,13 +888,16 @@ function injectModalStyles() {
     .push115-modal-btn-confirm:hover { background: #0066d6; }
     .push115-modal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
     .push115-toast-stack {
-      position: fixed; top: 16px; right: 16px;
-      width: 380px; max-width: calc(100vw - 32px);
-      max-height: calc(100vh - 32px); overflow-y: auto;
+      position: fixed; inset: auto; top: 16px; right: 16px;
+      width: 380px; height: auto; max-width: calc(100vw - 32px);
+      max-height: calc(100vh - 32px);
+      margin: 0; padding: 0; border: none; background: transparent; color: inherit;
+      overflow: visible; overflow-y: auto;
       display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
       z-index: 2147483647; pointer-events: none;
     }
     .push115-toast-stack:empty { display: none; }
+    .push115-toast-stack[popover]:not(:popover-open) { display: none; }
     .push115-toast {
       box-sizing: border-box; max-width: 100%; width: fit-content;
       min-width: 0; flex: 0 0 auto; overflow-wrap: anywhere; line-height: 1.45;
@@ -934,6 +937,72 @@ function injectModalStyles() {
 }
 
 let stickyToastEl = null
+const toastPopoverShown = new WeakMap()
+
+function isToastPopoverOpen(stack) {
+	try {
+		if (stack.matches(':popover-open')) return true
+	} catch {
+		// 不支持该选择器时改用自己记下的打开状态
+	}
+	return toastPopoverShown.get(stack) === true
+}
+
+function placeToastStackAtEnd(stack) {
+	const parent = document.documentElement || document.body
+	if (parent) parent.appendChild(stack)
+}
+
+function openToastPopover(stack) {
+	if (isToastPopoverOpen(stack) && typeof stack.hidePopover === 'function') {
+		try {
+			stack.hidePopover()
+		} catch {
+			// 实际已关闭时忽略，下面会重新打开
+		}
+		toastPopoverShown.set(stack, false)
+	}
+	try {
+		stack.showPopover()
+		toastPopoverShown.set(stack, true)
+		return true
+	} catch {
+		// 已在 top layer 但状态丢失时，先关闭再打开才能提到最前
+	}
+	if (typeof stack.hidePopover !== 'function') return false
+	try {
+		stack.hidePopover()
+		stack.showPopover()
+		toastPopoverShown.set(stack, true)
+		return true
+	} catch {
+		return false
+	}
+}
+
+function raiseToastStack(stack) {
+	if (!stack) return
+	if (typeof stack.showPopover !== 'function') {
+		placeToastStackAtEnd(stack)
+		return
+	}
+	stack.setAttribute('popover', 'manual')
+	if (openToastPopover(stack)) return
+	stack.removeAttribute('popover')
+	toastPopoverShown.set(stack, false)
+	placeToastStackAtEnd(stack)
+}
+
+function closeToastStackIfEmpty(stack) {
+	if (!stack || stack.childElementCount > 0) return
+	if (typeof stack.hidePopover !== 'function' || !isToastPopoverOpen(stack)) return
+	try {
+		stack.hidePopover()
+	} catch {
+		// 空栈已经不在 top layer
+	}
+	toastPopoverShown.set(stack, false)
+}
 
 function getToastStack() {
 	let stack = document.getElementById('push115-toast-stack')
@@ -953,8 +1022,13 @@ function showToast(type, msg, timeout = 3000) {
 	toast.className = `push115-toast ${type}`
 	toast.setAttribute('role', 'status')
 	toast.textContent = msg
-	getToastStack().appendChild(toast)
-	if (timeout) setTimeout(() => toast.remove(), timeout)
+	const stack = getToastStack()
+	stack.appendChild(toast)
+	raiseToastStack(stack)
+	if (timeout) setTimeout(() => {
+		toast.remove()
+		closeToastStackIfEmpty(document.getElementById('push115-toast-stack'))
+	}, timeout)
 }
 
 function showStickyToast(type, msg, withSpinner = true) {
@@ -972,13 +1046,15 @@ function showStickyToast(type, msg, withSpinner = true) {
 	stickyToastEl.appendChild(msgSpan)
 	const stack = getToastStack()
 	if (stickyToastEl.parentNode !== stack) stack.appendChild(stickyToastEl)
+	raiseToastStack(stack)
 }
 
 function hideStickyToast() {
-	if (stickyToastEl) {
-		stickyToastEl.remove()
-		stickyToastEl = null
-	}
+	if (!stickyToastEl) return
+	const stack = stickyToastEl.parentElement
+	stickyToastEl.remove()
+	stickyToastEl = null
+	closeToastStackIfEmpty(stack)
 }
 
 let activeModalHost = null
@@ -1085,6 +1161,8 @@ function createConfirmModal(rawLinks, type) {
 	shadow.appendChild(overlay)
 	document.body.appendChild(host)
 	activeModalHost = host
+	const toastStack = document.getElementById('push115-toast-stack')
+	if (toastStack && toastStack.childElementCount > 0) raiseToastStack(toastStack)
 
 	const closeModal = () => {
 		host.remove()
